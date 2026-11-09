@@ -1,6 +1,6 @@
 # git-graph expansion
 
-Status: in progress (P1-P3 implemented and committed; P4 implemented, P5-P6 not started)
+Status: in progress (P1-P4 implemented and committed; P5 implemented; P6 not started)
 
 ## Goal
 

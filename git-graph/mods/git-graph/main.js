@@ -3,7 +3,7 @@ import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualLi
 import { spaces, panes, focused, exec, watchFolder, theme, settings, props } from "herdr";
 import { loadPrs, prPanel, prToolbar, resetPrs } from "./prs.js";
 import { initConfig, loadConfig, configPanel, configToolbar, resetConfig } from "./config.js";
-import { initRefs, loadRefs, refsPanel, refsToolbar, resetRefs } from "./refs.js";
+import { initRefs, loadRefs, refsPanel, refsToolbar, resetRefs, validRefName, NAME_HELP } from "./refs.js";
 import { parseStatus, inProgress } from "./status.js";
 
 // Where the focused terminal is (same rule as the shipped Changes panel).
@@ -25,19 +25,8 @@ const ROW = 28,
 /** Appends an alpha byte to a #rrggbb theme color; the cast satisfies the element API's hex-template type. */
 const alpha = (color, a) => /** @type {`#${string}`} */ (color + a);
 const FORMAT = "%H%x1f%P%x1f%an%x1f%ar%x1f%D%x1f%s%x1e";
-
-// A branch or tag name the mod is willing to hand to git: no leading `-` or `.` (it would read as an
-// option or a hidden ref) and none of the shapes git rejects outright. `git check-ref-format` still
-// has the last word before any write (see createRef).
-function validRefName(name) {
-  return (
-    /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/.test(name) &&
-    !name.includes("..") &&
-    !name.endsWith("/") &&
-    !name.endsWith(".") &&
-    !name.endsWith(".lock")
-  );
-}
+// The git command that aborts each operation the banner can name (a `git am` has no Abort here).
+const ABORT = { MERGING: "merge", REBASING: "rebase", "CHERRY-PICKING": "cherry-pick", REVERTING: "revert" };
 
 function parseLog(text) {
   return text
@@ -302,6 +291,9 @@ export default class GitGraph extends View {
         if (work?.changed !== this.work?.changed || work?.conflicts !== this.work?.conflicts || prog !== this.inprog)
           changed = true;
         this.work = work;
+        // An armed Abort belongs to the operation the banner showed; when it ends or another one
+        // starts, the arm goes with it.
+        if (prog !== this.inprog && this.armed?.startsWith("abort:")) this.armed = null;
         this.inprog = prog;
         const counts = ab.code === 0 ? ab.stdout.trim().split(/\s+/).map(Number) : null;
         const signature = `${refs.stdout}|${head.stdout}|${sym.stdout}|${counts}|${this.limit}`;
@@ -391,7 +383,8 @@ export default class GitGraph extends View {
   // Runs one git command the user asked for (fetch, pull, push, switch, and the guarded writes of
   // ADR-007). One at a time; the outcome shows in the note bar, and the graph reloads afterwards.
   // extra.check(run) is a read-only precondition run first (`run(args)` is a READ git call) that
-  // returns a refusal text or null; extra.ok replaces the success text; extra.done runs on success.
+  // returns a refusal text or null; extra.ok replaces the success text; extra.done runs on success;
+  // extra.keep leaves the success note up until it is clicked away (it carries a recovery command).
   op(label, args, cx, cmd = "git", extra = {}) {
     if (this.busy || !this.root) return;
     this.busy = label;
@@ -427,9 +420,11 @@ export default class GitGraph extends View {
       } finally {
         this.busy = null;
         this.signature = null;
-        if (ok)
+        const mine = this.note;
+        if (ok && !extra.keep)
           cx.timer.after(5000, (cx) => {
-            if (this.note?.ok) {
+            // Only this operation's own note: a later one (a kept recovery note) must stay.
+            if (this.note === mine) {
               this.note = null;
               cx.notify();
             }
@@ -499,7 +494,10 @@ export default class GitGraph extends View {
   // Why a guarded write must not run now, or null. A merge, rebase, cherry-pick, revert or patch in
   // progress would be tangled up with it.
   writeBlock() {
-    return this.inprog ? `${this.inprog}: finish or abort it in a terminal first` : null;
+    if (!this.inprog) return null;
+    return ABORT[this.inprog]
+      ? `${this.inprog}: finish it in a terminal, or use Abort in the banner, first`
+      : `${this.inprog}: finish or abort it in a terminal first`;
   }
 
   // Shows a refusal in the note bar instead of running anything.
@@ -733,8 +731,8 @@ export default class GitGraph extends View {
     this.files = [];
     this.openFile = null;
     this.setDiff([]);
-    // A pending Pop belongs to the stash that was open.
-    if (this.armed?.startsWith("pop:")) this.armed = null;
+    // A pending Pop, Drop, Cherry-pick or Revert belongs to the item that was open.
+    if (/^(pop|drop|cherry-pick|revert):/.test(this.armed ?? "")) this.armed = null;
   }
 
   select(hash, cx) {
@@ -899,10 +897,7 @@ export default class GitGraph extends View {
       msg = this.refMsg.value().trim(),
       tag = kind === "tag";
     if (!validRefName(name)) {
-      this.refuse(
-        "Type a valid name first: letters, digits, . _ / - (not starting with - or ., not ending with . / or .lock)",
-        cx,
-      );
+      this.refuse(NAME_HELP, cx);
       return;
     }
     const args = tag
@@ -920,6 +915,54 @@ export default class GitGraph extends View {
         this.refName.set_value("");
         this.refMsg.set_value("");
       },
+    });
+  }
+
+  // Cherry-pick or revert the selected commit onto the current branch. Two clicks, because it creates a
+  // commit; the tracked files must be clean (checked right before it runs), a merge commit is refused
+  // (git needs -m for it), and a detached HEAD is refused (the new commit would be easy to lose). A
+  // conflict leaves the operation in progress: the banner offers Abort, and finishing is left to a terminal.
+  pickCommit(kind, cx) {
+    const c = this.writeTarget(cx);
+    if (!c) return;
+    const revert = kind === "revert";
+    if (c.parents.length > 1)
+      return this.refuse(
+        `A merge commit cannot be ${revert ? "reverted" : "cherry-picked"} here: use a terminal (git needs -m)`,
+        cx,
+      );
+    if (!this.branch) return this.refuse("Detached HEAD: switch to a branch first", cx);
+    if (!this.confirm(`${kind}:${c.hash}`, cx)) return;
+    this.op(
+      `${revert ? "Revert" : "Cherry-pick"} ${c.short}`,
+      revert ? ["revert", "--no-edit", c.hash] : ["cherry-pick", c.hash],
+      cx,
+      "git",
+      {
+        check: async (run) => {
+          const r = await run(["status", "--porcelain", "--untracked-files=no"]);
+          return r.code === 0 && r.stdout.trim() === ""
+            ? null
+            : "Tracked files have uncommitted changes: commit or stash them first";
+        },
+        ok: `${revert ? "Reverted" : "Cherry-picked"} ${c.short} onto ${this.branch}`,
+      },
+    );
+  }
+
+  // Abort the merge, rebase, cherry-pick or revert in progress (`<op> --abort`). Two clicks, because it
+  // discards the work done on that operation so far, and only while that operation is still the one in
+  // progress (re-read right before it runs). This is the one write that is allowed while `inprog` is set.
+  abort(cx) {
+    const kind = this.inprog,
+      cmd = ABORT[kind];
+    if (!cmd || this.busy || !this.root) return;
+    if (!this.confirm(`abort:${kind}`, cx)) return;
+    const root = this.root,
+      on = this.on;
+    this.op(`Abort ${cmd}`, [cmd, "--abort"], cx, "git", {
+      check: async (run) => ((await inProgress(run, root, on)) === kind ? null : `The ${cmd} is no longer in progress`),
+      ok: `Aborted the ${cmd}`,
     });
   }
 
@@ -1192,6 +1235,21 @@ export default class GitGraph extends View {
   // `c` is the commit shown; the Refs tab passes a stash (a commit the graph log does not list).
   detailPanel(t, mono, c = this.rows.find((r) => r.c.hash === this.sel)?.c) {
     const btn = (id, label, fn) => this.small(id, label, fn, t);
+    // The buttons that write ignore a click that only dismissed the branch menu.
+    const guarded = (fn) => (cx) => {
+      if (!this.blocked()) fn(cx);
+    };
+    const history = this.tab === "graph" && Boolean(c);
+    const pickBtn = (id, kind, label) => {
+      const armed = this.armed === `${kind}:${c?.hash}`;
+      return this.small(
+        id,
+        armed ? `Click again to ${label.toLowerCase()}` : label,
+        guarded((cx) => this.pickCommit(kind, cx)),
+        t,
+        armed ? t.ansi1 : null,
+      );
+    };
     const head = h_flex()
       .h(40)
       .flex_none()
@@ -1244,6 +1302,11 @@ export default class GitGraph extends View {
                 ),
           )
           .child(div().flex_1())
+          .when(history, (e2) =>
+            e2
+              .child(pickBtn("gg-cherry", "cherry-pick", "Cherry-pick"))
+              .child(pickBtn("gg-revert", "revert", "Revert")),
+          )
           .child(
             btn("gg-close", "Close", (cx) => {
               this.clearSel();
@@ -1418,11 +1481,7 @@ export default class GitGraph extends View {
                 .when(f.del > 0, (e) => e.child(div().text_color(t.ansi1).child(`−${f.del}`))),
             ),
           );
-    // Branch, tag or detached checkout at this commit; only for a graph commit (not a stash), and the
-    // buttons ignore a click that only dismissed the branch menu.
-    const guarded = (fn) => (cx) => {
-      if (!this.blocked()) fn(cx);
-    };
+    // Branch, tag or detached checkout at this commit; only for a graph commit (not a stash).
     const actions =
       this.tab === "graph" && !this.openFile && c
         ? h_flex()
@@ -1843,9 +1902,24 @@ export default class GitGraph extends View {
                   .text_color(t.muted)
                   .child(
                     this.work?.conflicts
-                      ? `${this.work.conflicts} file${this.work.conflicts === 1 ? "" : "s"} with conflicts. Resolve or abort it in a terminal.`
-                      : "In progress. Finish or abort it in a terminal.",
+                      ? `${this.work.conflicts} file${this.work.conflicts === 1 ? "" : "s"} with conflicts. Resolve it in a terminal${ABORT[this.inprog] ? ", or abort it (that discards the work on it so far)" : ", or run git am --abort"}.`
+                      : `In progress. Finish it in a terminal${ABORT[this.inprog] ? ", or abort it (that discards the work on it so far)" : ", or run git am --abort"}.`,
                   ),
+              )
+              .when(Boolean(ABORT[this.inprog]), (e2) =>
+                e2.child(
+                  this.small(
+                    "gg-abort",
+                    this.armed === `abort:${this.inprog}`
+                      ? `Click again to abort the ${ABORT[this.inprog]}`
+                      : `Abort ${ABORT[this.inprog]}`,
+                    (cx) => {
+                      if (!this.blocked()) this.abort(cx);
+                    },
+                    t,
+                    this.armed === `abort:${this.inprog}` ? t.ansi1 : null,
+                  ),
+                ),
               ),
           ),
         )

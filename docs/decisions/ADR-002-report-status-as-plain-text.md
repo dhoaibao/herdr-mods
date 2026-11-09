@@ -10,7 +10,7 @@ Fetch, Pull, Push and checkout take time and can fail. Earlier iterations of the
 
 ## Decision
 
-Operation state is shown only as text in a note bar under the controls: the running label, `<label>: done` (cleared after 5 s) or the last four lines of git's or gh's own error. Buttons carry icons (SVG files) but never an animated or state-changing glyph.
+Operation state is shown only as text in a note bar under the controls: the running label, `<label>: done` (cleared after 5 s, except a note that carries a recovery command, which stays until clicked away or replaced by the next action's note; see ADR-007) or the last four lines of git's or gh's own error. Buttons carry icons (SVG files) but never an animated or state-changing glyph.
 
 ## Consequences
 
