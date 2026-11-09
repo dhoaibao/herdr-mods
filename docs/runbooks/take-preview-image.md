@@ -17,6 +17,8 @@ Produce `<mod>/preview.png`, the picture Herdr's gallery shows, without leaking 
 4. Close the tab: `herdr-app do tab.close --id <tab id> --confirmed true`.
 5. Crop to the overlay only (the right-hand pane; for a 1920 x 1048 frame that was `(298, 48, 1912, 496)`) and save as `git-graph/preview.png`.
 
+For the Config tab image (`git-graph/preview-config.png`), give the demo repo a local config with fake values only (name, email, a remote URL with a fake token to show the masking), open the tab with `--props '{"folder":"<demo repo>","tab":"config","scope":"local"}'` so the global `~/.gitconfig` and its path stay out of the frame, and crop the same way. If the focused space is on another machine, pass `--space <local space id>` to `tab.new`, `space.select` it for the shot, close the tab, and select the previous space again.
+
 ## Verify
 
 Open the PNG: it shows only the mod, with demo authors, and no sidebar, workspace names or personal data. The file should also carry no text or EXIF chunks.

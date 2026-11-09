@@ -8,7 +8,7 @@ A collection of mods for the [Herdr](https://herdr.dev) desktop app. Each mod li
 
 ## git-graph
 
-A repository overlay with two tabs.
+A repository overlay with three tabs.
 
 **Graph**
 - Lane-based commit graph with ref chips, author and relative time, rendered in a virtual list.
@@ -21,6 +21,12 @@ A repository overlay with two tabs.
 - Open, Merged and Closed lists with CI status, draft state, review decision, branch and author.
 - Detail panel with checks, reviews, the rendered description and changed files; click a file to see its diff.
 - Checkout (`gh pr checkout`), Open in browser, and Close (dismisses the detail panel only). Creating, reviewing, merging and closing PRs on GitHub are intentionally out of scope.
+
+**Config**
+- Read-only list of the effective git configuration (`git config --list --show-origin --show-scope`), grouped by section, with the scope (local, global, system, ...) and file each setting comes from.
+- Filter by scope (All, Local, Global) and by text. Masking is best effort: credentials in URLs (including `url.<base>.insteadOf` keys) and proxy settings, `http.extraHeader`, and values of settings whose name contains `pass`, `token` or `secret` are hidden; other secrets stored under arbitrary keys are not. Editing configuration is intentionally out of scope.
+
+![git-graph config tab](git-graph/preview-config.png)
 
 ### Requirements
 
@@ -77,7 +83,7 @@ herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"p
 
 Herdr mods are unsandboxed JavaScript with the same access as the app. `git-graph` runs these commands in the repository you open it on:
 
-- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track` and `-c`) and read-only queries (`log`, `show`, `for-each-ref`, `rev-list`, `rev-parse`, `symbolic-ref`, `config --get`).
+- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track` and `-c`) and read-only queries (`log`, `show`, `for-each-ref`, `rev-list`, `rev-parse`, `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
 - `gh`: `pr list`, `pr view`, `pr diff` (read-only, contact GitHub), `pr checkout` (may fetch from a fork and add a remote) and `pr view --web` (opens your browser).
 
 It never creates, merges, reviews or closes pull requests, and never forces a push. Review the source before installing.

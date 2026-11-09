@@ -2,6 +2,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, settings, props } from "herdr";
 import { loadPrs, prPanel, prToolbar, resetPrs } from "./prs.js";
+import { initConfig, loadConfig, configPanel, configToolbar, resetConfig } from "./config.js";
 
 // Where the focused terminal is (same rule as the shipped Changes panel).
 function location() {
@@ -93,6 +94,7 @@ function layout(commits) {
 // The last graph read for each folder. Module code outlives a closed overlay, so reopening the
 // mod paints the previous graph at once and refreshes it in the background.
 const CACHE = new Map();
+const TABS = ["graph", "prs", "config"];
 let LAST_TAB = "graph"; // reopening the mod returns to the tab it was closed on
 const CACHED = ["root", "on", "rows", "lanes", "more", "branch", "sync", "upstreamGone", "signature", "limit"];
 
@@ -119,10 +121,11 @@ export default class GitGraph extends View {
     this.guard = 0;
     this.branches = [];
     this.filter = "";
-    this.tab = props()?.tab === "prs" || props()?.tab === "graph" ? props().tab : LAST_TAB;
+    this.tab = TABS.includes(props()?.tab) ? props().tab : LAST_TAB;
     this.prState = ["open", "merged", "closed"].includes(props()?.state) ? props().state : "open";
     this.prLoading = false;
     resetPrs(this);
+    initConfig(this);
     const raw = props()?.pr,
       want = typeof raw === "number" || (typeof raw === "string" && /^\d+$/.test(raw)) ? Number(raw) : NaN;
     this.prWant = Number.isSafeInteger(want) && want > 0 ? want : null;
@@ -184,6 +187,7 @@ export default class GitGraph extends View {
       this.note = null;
       this.armed = false;
       resetPrs(this);
+      resetConfig(this);
       force = true;
     }
     if (!cwd) return;
@@ -272,6 +276,7 @@ export default class GitGraph extends View {
         this.loading = false;
         if (changed) cx.notify();
         if (this.tab === "prs") loadPrs(this, cx);
+        if (this.tab === "config") loadConfig(this, cx);
       }
     });
   }
@@ -281,6 +286,7 @@ export default class GitGraph extends View {
     this.tab = LAST_TAB = tab;
     this.menu = false;
     if (tab === "prs") loadPrs(this, cx);
+    if (tab === "config") loadConfig(this, cx);
     cx.notify();
   }
 
@@ -1140,7 +1146,8 @@ export default class GitGraph extends View {
                 .h_full()
                 .gap(2)
                 .child(this.tabButton("gg-tab-graph", "Graph", "graph", t))
-                .child(this.tabButton("gg-tab-prs", "Pull requests", "prs", t)),
+                .child(this.tabButton("gg-tab-prs", "Pull requests", "prs", t))
+                .child(this.tabButton("gg-tab-config", "Config", "config", t)),
             ),
         )
         // The controls of the shown tab sit on their own row under the tabs.
@@ -1190,7 +1197,8 @@ export default class GitGraph extends View {
                   ),
                 ),
             )
-            .when(!graph, (e) => e.children(prToolbar(this, t))),
+            .when(this.tab === "prs", (e) => e.children(prToolbar(this, t)))
+            .when(this.tab === "config", (e) => e.children(configToolbar(this, t))),
         )
         .when(Boolean(this.busy || this.note), (e) =>
           e.child(
@@ -1252,7 +1260,8 @@ export default class GitGraph extends View {
               ),
           ),
         )
-        .when(!graph, (e) => e.child(prPanel(this, t, mono)))
+        .when(this.tab === "prs", (e) => e.child(prPanel(this, t, mono)))
+        .when(this.tab === "config", (e) => e.child(configPanel(this, t, mono)))
         .when(graph && this.more, (e) =>
           e.child(
             h_flex()
