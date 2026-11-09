@@ -112,6 +112,8 @@ export default class GitGraph extends View {
     this.diff = [];
     this.diffWidth = 300;
     this.wide = true;
+    /** @type {string} the theme's mono font, set on each render for the row renderers */
+    this.mono = "JetBrains Mono";
     this.branch = null;
     this.sync = null;
     this.busy = null;
@@ -517,6 +519,7 @@ export default class GitGraph extends View {
       .gap(8)
       .items_center()
       .cursor_pointer()
+      .when(current, (e) => e.bg(alpha(t.accent, "18")))
       .hover((s) => s.bg(t.hover))
       .child(
         div()
@@ -531,9 +534,10 @@ export default class GitGraph extends View {
           .min_w(0)
           .truncate()
           .text_color(b.kind === "new" ? t.accent : t.foreground)
+          .when(current, (e) => e.font_semibold())
           .child(b.kind === "new" ? `Create branch "${b.name}"` : b.name),
       )
-      .when(b.kind === "remote", (e) => e.child(div().flex_none().text_size(12).text_color(t.ansi4).child("remote")));
+      .when(b.kind === "remote", (e) => e.child(this.pill("remote", t.ansi4).h(18).px(5).text_size(11)));
   }
 
   menuPanel(t) {
@@ -924,6 +928,23 @@ export default class GitGraph extends View {
               .text_color(t.muted)
               .child(`${this.files.length} file${this.files.length === 1 ? "" : "s"} changed`),
           )
+          .when(
+            this.files.some((f) => f.add || f.del),
+            (e2) =>
+              e2
+                .child(
+                  div()
+                    .text_size(13)
+                    .text_color(t.ansi2)
+                    .child(`+${this.files.reduce((n, f) => n + f.add, 0)}`),
+                )
+                .child(
+                  div()
+                    .text_size(13)
+                    .text_color(t.ansi1)
+                    .child(`−${this.files.reduce((n, f) => n + f.del, 0)}`),
+                ),
+          )
           .child(div().flex_1())
           .child(
             btn("gg-close", "Close", (cx) => {
@@ -934,15 +955,38 @@ export default class GitGraph extends View {
       );
     // detail is [author, date, "", subject, ...body]: author and date share one muted line and the
     // subject is set apart from the body. Loading and error text (one line) is shown as is.
-    /** @type {{ text: string, tone?: any, gap?: boolean, bold?: boolean }[]} */
-    const message =
-      this.detail?.length >= 2
-        ? [
-            { text: `${this.detail[0]} · ${this.detail[1]}`, tone: t.muted },
-            { text: "", gap: true },
-            ...this.detail.slice(3).map((text, i) => ({ text, tone: t.foreground, bold: i === 0 })),
-          ]
-        : [{ text: this.detail?.[0] ?? "Loading…", tone: t.muted }];
+    const loaded = this.detail?.length >= 2;
+    const lines = loaded ? this.detail.slice(3) : [];
+    while (lines.length && !lines[0].trim()) lines.shift();
+    const message = loaded
+      ? [
+          div()
+            .flex_none()
+            .min_h(22)
+            .text_size(15)
+            .font_semibold()
+            .text_color(t.foreground)
+            .child(lines[0] || "(no message)"),
+          div().flex_none().min_h(18).text_size(12).text_color(t.dim).child(`${this.detail[0]} · ${this.detail[1]}`),
+          ...(lines.length > 1
+            ? [
+                div().h(6).flex_none(),
+                ...lines.slice(1).map((text) =>
+                  div()
+                    .flex_none()
+                    .min_h(18)
+                    .text_color(t.muted)
+                    .child(text || " "),
+                ),
+              ]
+            : []),
+        ]
+      : [
+          div()
+            .flex_none()
+            .text_color(t.muted)
+            .child(this.detail?.[0] ?? "Loading…"),
+        ];
     const body = this.openFile
       ? this.diffView(t, mono)
       : v_flex()
@@ -950,26 +994,17 @@ export default class GitGraph extends View {
           .flex_1()
           .min_h(0)
           .overflow_y_scroll()
-          .p(10)
+          .px(14)
+          .py(12)
           .gap(1)
-          .font_family(mono)
           .text_size(13)
-          .children(
-            message.map((l) =>
-              l.gap
-                ? div().h(6).flex_none()
-                : div()
-                    .min_h(18)
-                    .text_color(l.tone)
-                    .when(l.bold, (e) => e.font_semibold())
-                    .child(l.text || " "),
-            ),
-          )
-          .child(div().h(8).flex_none())
+          .children(message)
+          .child(div().h(10).flex_none())
           .children(
             this.files.map((f) =>
               h_flex()
                 .id(`gg-f-${f.path}`)
+                .font_family(mono)
                 .min_h(28)
                 .flex_none()
                 .px(6)
@@ -980,12 +1015,45 @@ export default class GitGraph extends View {
                 .hover((s) => s.bg(t.hover))
                 .on_click((_e, cx) => this.pickFile(f.path, cx))
                 .child(
-                  div()
-                    .w(12)
-                    .text_color(f.status === "A" ? t.ansi2 : f.status === "D" ? t.ansi1 : t.blocked)
-                    .child(f.status),
+                  (() => {
+                    const c = f.status === "A" ? t.ansi2 : f.status === "D" ? t.ansi1 : t.ansi3;
+                    return div()
+                      .w(18)
+                      .h(18)
+                      .flex_none()
+                      .flex()
+                      .items_center()
+                      .justify_center()
+                      .rounded(4)
+                      .bg(alpha(c, "22"))
+                      .text_size(12)
+                      .text_color(c)
+                      .child(f.status);
+                  })(),
                 )
-                .child(div().flex_1().min_w(0).truncate().child(f.path))
+                .child(
+                  (() => {
+                    // The file name stands out; its directory is muted so long paths stay scannable.
+                    const cut = f.path.lastIndexOf("/");
+                    return h_flex()
+                      .flex_1()
+                      .min_w(0)
+                      .overflow_hidden()
+                      .whitespace_nowrap()
+                      .child(
+                        div()
+                          .min_w(0)
+                          .truncate()
+                          .text_color(t.dim)
+                          .child(cut >= 0 ? f.path.slice(0, cut + 1) : ""),
+                      )
+                      .child(
+                        div()
+                          .flex_none()
+                          .child(f.path.slice(cut + 1)),
+                      );
+                  })(),
+                )
                 .when(f.add > 0, (e) => e.child(div().text_color(t.ansi2).child(`+${f.add}`)))
                 .when(f.del > 0, (e) => e.child(div().text_color(t.ansi1).child(`−${f.del}`))),
             ),
@@ -1059,7 +1127,25 @@ export default class GitGraph extends View {
     };
     for (const j of joins) bend(j, false);
     for (const j of links) bend(j, true);
-    if (lane < MAX_LANES) {
+    if (lane < MAX_LANES && row.c.refs.some((r) => r.kind === "head")) {
+      // The checked-out commit: a ring in the accent color around a filled core.
+      out.push(
+        div()
+          .absolute()
+          .left(x(lane) - 7)
+          .top(half - 7)
+          .w(14)
+          .h(14)
+          .rounded(7)
+          .bg(t.background)
+          .border_2()
+          .border_color(t.accent)
+          .flex()
+          .items_center()
+          .justify_center()
+          .child(div().w(6).h(6).rounded(3).bg(t.accent)),
+      );
+    } else if (lane < MAX_LANES) {
       const merge = row.c.parents.length > 1;
       out.push(
         div()
@@ -1084,6 +1170,7 @@ export default class GitGraph extends View {
 
   chip(ref, t) {
     const c = ref.kind === "head" ? t.accent : ref.kind === "tag" ? t.ansi3 : ref.kind === "remote" ? t.ansi4 : t.ansi2;
+    const head = ref.kind === "head";
     return div()
       .flex_none()
       .max_w(140)
@@ -1093,17 +1180,35 @@ export default class GitGraph extends View {
       .items_center()
       .rounded(4)
       .border_1()
-      .border_color(c)
+      .border_color(alpha(c, head ? "ff" : "88"))
+      .bg(alpha(c, head ? "38" : "1c"))
       .text_color(c)
       .text_size(12)
+      .when(head, (e) => e.font_semibold())
       .truncate()
       .child(ref.name);
+  }
+
+  // A small tinted pill: the ahead/behind counts beside the branch chip, and `remote` in the branch menu.
+  pill(text, color) {
+    return div()
+      .flex_none()
+      .h(20)
+      .px(6)
+      .flex()
+      .items_center()
+      .rounded(10)
+      .bg(alpha(color, "22"))
+      .text_size(12)
+      .text_color(color)
+      .child(text);
   }
 
   row(row, t) {
     const c = row.c,
       picked = this.sel === c.hash;
     // No handlers in a virtual list's renderer: clicks come from on_item_click on the list.
+    const merge = c.parents.length > 1;
     return h_flex()
       .w_full()
       .h(ROW)
@@ -1112,6 +1217,8 @@ export default class GitGraph extends View {
       .gap(6)
       .items_center()
       .cursor_pointer()
+      .border_l(2)
+      .border_color(picked ? t.accent : alpha(t.accent, "00"))
       .when(picked, (e) => e.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .child(this.graph(row, t))
@@ -1125,9 +1232,18 @@ export default class GitGraph extends View {
             .child(`+${c.refs.length - 3}`),
         ),
       )
-      .child(div().flex_1().min_w(0).truncate().child(c.subject))
+      .child(
+        div()
+          .flex_1()
+          .min_w(0)
+          .truncate()
+          .text_color(merge && !picked ? t.muted : t.foreground)
+          .child(c.subject),
+      )
       .when(this.wide, (e) =>
-        e.child(div().w(130).flex_none().truncate().text_size(13).text_color(t.muted).child(c.author)),
+        e
+          .child(div().w(60).flex_none().font_family(this.mono).text_size(12).text_color(t.dim).child(c.short))
+          .child(div().w(130).flex_none().truncate().text_size(13).text_color(t.muted).child(c.author)),
       )
       .child(
         div()
@@ -1148,6 +1264,7 @@ export default class GitGraph extends View {
     const off = !this.root || Boolean(this.busy),
       s = this.sync,
       graph = this.tab === "graph";
+    this.mono = String(mono);
     const branchLabel = this.branch ?? (this.root ? "HEAD detached" : "—");
     return (
       v_flex()
@@ -1208,10 +1325,8 @@ export default class GitGraph extends View {
                     { disabled: !this.root, tone: t.accent, icon: "branch" },
                   ).max_w(300),
                 )
-                .when(Boolean(s?.behind), (e2) =>
-                  e2.child(div().text_size(12).text_color(t.ansi3).child(`↓${s.behind}`)),
-                )
-                .when(Boolean(s?.ahead), (e2) => e2.child(div().text_size(12).text_color(t.ansi2).child(`↑${s.ahead}`)))
+                .when(Boolean(s?.behind), (e2) => e2.child(this.pill(`↓${s.behind}`, t.ansi3)))
+                .when(Boolean(s?.ahead), (e2) => e2.child(this.pill(`↑${s.ahead}`, t.ansi2)))
                 .child(div().flex_1())
                 .child(this.button("gg-fetch", "Fetch", (cx) => this.fetch(cx), t, { disabled: off, icon: "fetch" }))
                 .child(
@@ -1248,7 +1363,8 @@ export default class GitGraph extends View {
               .items_center()
               .border_b(1)
               .border_color(t.border)
-              .bg(t.raised)
+              .relative()
+              .bg(this.busy ? t.raised : alpha(this.note.ok ? t.ansi2 : t.ansi1, "14"))
               .text_size(13)
               .text_color(this.busy ? t.muted : this.note.ok ? t.ansi2 : t.ansi1)
               .on_click((_e, cx) => {
@@ -1257,6 +1373,15 @@ export default class GitGraph extends View {
                   cx.notify();
                 }
               })
+              .child(
+                div()
+                  .absolute()
+                  .left(0)
+                  .top(0)
+                  .w(3)
+                  .h_full()
+                  .bg(this.busy ? t.accent : this.note.ok ? t.ansi2 : t.ansi1),
+              )
               .child(
                 div()
                   .flex_1()
