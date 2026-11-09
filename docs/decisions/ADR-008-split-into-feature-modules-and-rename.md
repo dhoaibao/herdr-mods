@@ -18,7 +18,7 @@
 ## Consequences
 
 - Behavior is meant to be identical. It was checked by `bun run check`, `herdr-app check` and a token-level comparison of the old `main.js` against the new modules (only the forwarding methods and the renamed functions differ). The handlers still have no automated tests, so they need to be used in the app after a change like this.
-- Someone who installed `git-graph` has to remove `~/.config/herdr-app/mods/git-graph/` and change the key to `mod.open:git-panel` themselves; the installer does not touch the old folder or the user's `keys.json` beyond adding the new binding when `ctrl-shift-g` is free.
+- Someone who installed `git-graph` gets the migration from the installer ([ADR-004](ADR-004-installer-never-creates-keys-json.md)): the old folder moves to `<home>/backups/` and a `mod.open:git-graph` binding in `keys.json` is pointed at `git-panel`; where that cannot be done (symlinked or unusual `keys.json`, no `jq`, `--no-keys`) it prints what to change. Saved tabs and layouts that name `--mod git-graph` are theirs to recreate.
 - The gallery page changes to `dhoaibao/herdr-mods--git-panel` once the renamed repo state is indexed; links to the old page break.
 - The live-copy runbook now copies every `.js` file, and removes live files that no longer exist in the repo.
 - Commits before this one still say `git-graph` and a single `main.js`; they describe what was true then.

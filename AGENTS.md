@@ -13,7 +13,7 @@ Source repo for Herdr desktop-app mods, one folder per mod, laid out like a Herd
 - `git-panel/keys.json`: keys the mod expects; users merge it into `~/.config/herdr-app/keys.json`.
 - `git-panel/RECIPE.md`: brief to rebuild the mod. Update it when behavior or gotchas change.
 - `README.md`: mod table, trust note, install steps.
-- `install.sh`: curl-installable POSIX installer (tarball download, never overwrites without `--force`, adds `ctrl-shift-g` to an existing `keys.json` only when free and never creates one, since a one-key file would replace Herdr's default shortcuts). Keep the README install table in step with its options and variables.
+- `install.sh`: curl-installable POSIX installer (tarball download, never overwrites without `--force`, adds `ctrl-shift-g` to an existing `keys.json` only when free and never creates one, moves an old `git-graph` mod to `<home>/backups/` and points a `mod.open:git-graph` binding at `git-panel` (ADR-004), since a one-key file would replace Herdr's default shortcuts). Keep the README install table in step with its options and variables.
 - `git-panel/preview.png` (Graph tab) and `git-panel/preview-config.png` (Config tab, opened with `"scope":"local"` so `~/.gitconfig` stays out): cropped `herdr-app shot` of the mod on a throwaway demo repo; never include the Herdr sidebar or real workspace names.
 
 ### Canonical sources and generated files

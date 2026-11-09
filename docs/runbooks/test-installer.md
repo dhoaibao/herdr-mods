@@ -19,6 +19,8 @@ Check `install.sh` without touching your real Herdr config, offline first and th
    - `ctrl-shift-g` already bound: left alone;
    - a second run without `--force`: refused, nothing changed; with `--force`: the old copy is under `$H/backups/`;
    - a symlinked `keys.json`, or one holding two JSON documents: untouched, manual line printed;
+   - an old `mods/git-graph` folder: moved to `$H/backups/git-graph-<timestamp>`, `mods/` holds only `git-panel`; with `--no-keys` it is moved and `keys.json` is untouched;
+   - a `keys.json` that binds `mod.open:git-graph` (on `ctrl-shift-g` or another key): the value becomes `mod.open:git-panel`, other keys are preserved, a `.bak-<timestamp>` exists, and `ctrl-shift-g` is not added a second time; with a symlink, two JSON documents or no `jq`: untouched and a note says what to change;
    - `--no-keys`, a missing `$H`, and a `$H` containing spaces.
 3. Real download into a throwaway home: `H=$(mktemp -d) && curl -fsSL https://raw.githubusercontent.com/dhoaibao/herdr-mods/main/install.sh | HERDR_APP_HOME=${H:?} sh`. Pin a commit with `HERDR_MODS_REF=<sha>` (on the `sh` side of the pipe).
 

@@ -17,6 +17,8 @@
 # Apart from a temporary directory, the script only writes inside the Herdr config home. It
 # never overwrites an existing mod without --force, never creates keys.json (a file with one
 # key would replace Herdr's default shortcuts), and never replaces a key binding you have.
+# The one exception is the rename: an old git-graph mod is moved to <home>/backups/ and a key
+# bound to mod.open:git-graph is pointed at git-panel (backup kept next to keys.json).
 #
 # Everything runs inside main(), called on the last line, so a truncated download runs nothing.
 
@@ -38,6 +40,15 @@ EOF
 say() { printf '%s\n' "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 
+# Whether a keys file binds the old mod as a value (not just as a key). Without jq: a text search.
+has_old_binding() {
+  if command -v jq >/dev/null 2>&1 && [ "$(jq -s 'length' "$1" 2>/dev/null)" = "1" ]; then
+    jq -e 'any(..; . == "mod.open:git-graph")' "$1" >/dev/null 2>&1
+  else
+    grep -q '"mod.open:git-graph"' "$1" 2>/dev/null
+  fi
+}
+
 cleanup() {
   rm -rf "$TMP"
   if [ -n "${STAGE:-}" ]; then rm -rf "$STAGE"; fi
@@ -54,6 +65,7 @@ main() {
   KEYS_NEW=""
   OLD=""
   ADDED=0
+  MIGRATED=0
 
   for arg in "$@"; do
     case "$arg" in
@@ -98,7 +110,7 @@ main() {
   if [ -e "$DEST" ] || [ -L "$DEST" ]; then
     # Kept outside mods/ so Herdr does not load the old copy as a second mod.
     mkdir -p "$HOME_DIR/backups"
-    OLD="$HOME_DIR/backups/$MOD-$(date +%Y%m%d%H%M%S)"
+    OLD="$HOME_DIR/backups/$MOD-$(date +%Y%m%d%H%M%S)-$$"
     mv "$DEST" "$OLD"
     say "Moved the existing mod to $OLD"
   fi
@@ -108,9 +120,18 @@ main() {
     die "could not move the new copy into $DEST"
   fi
   say "Installed $MOD to $DEST"
-  # This mod was called git-graph before it was renamed. Never touched here: the user removes it.
-  if [ -e "$HOME_DIR/mods/git-graph" ] || [ -L "$HOME_DIR/mods/git-graph" ]; then
-    say "Found the old git-graph mod in $HOME_DIR/mods/git-graph (it is now $MOD). It is left as it is: delete it when you are happy with $MOD, and change \"mod.open:git-graph\" to \"mod.open:$MOD\" in $HOME_DIR/keys.json if you bound a key to it."
+
+  # This mod was called git-graph before it was renamed. Two copies would answer to the same key, so
+  # the old one is moved out of mods/ to backups/ (like --force does, so nothing is lost).
+  OLDMOD="$HOME_DIR/mods/git-graph"
+  if [ -e "$OLDMOD" ] || [ -L "$OLDMOD" ]; then
+    if mkdir -p "$HOME_DIR/backups" \
+      && OLDBAK="$HOME_DIR/backups/git-graph-$(date +%Y%m%d%H%M%S)-$$" \
+      && mv "$OLDMOD" "$OLDBAK"; then
+      say "Moved the old git-graph mod (renamed to $MOD) to $OLDBAK. Open tabs and saved layouts that use --mod git-graph stop working: recreate them with --mod $MOD."
+    else
+      say "Could not move the old git-graph mod; delete $OLDMOD yourself"
+    fi
   fi
 
   # 3. Add the key binding if it is free; never replace one that is in use. keys.json holds the
@@ -122,15 +143,35 @@ main() {
       say "No keys.json in $HOME_DIR, so Herdr uses its built-in shortcuts; none was created (a file with one key would replace them). Once you have a keys.json, $MANUAL"
     elif [ -L "$KEYS_DST" ] || [ ! -f "$KEYS_DST" ]; then
       # A symlink (dotfiles managers) would be replaced by a plain file when the merge is moved in.
-      say "$KEYS_DST is a symlink or not a regular file; left it alone; $MANUAL"
+      if has_old_binding "$KEYS_DST"; then
+        say "$KEYS_DST is a symlink or not a regular file; left it alone."
+      else
+        say "$KEYS_DST is a symlink or not a regular file; left it alone; $MANUAL"
+      fi
+    elif has_old_binding "$KEYS_DST"; then
+      # A binding to the old mod: point it at the renamed one and keep the key the user chose. When this
+      # cannot be done (no jq, not a single JSON object), the note after this block says what to change.
+      if command -v jq >/dev/null 2>&1 \
+        && [ "$(jq -s 'length' "$KEYS_DST" 2>/dev/null)" = "1" ] \
+        && KEYS_NEW="$HOME_DIR/.keys.json.$$" \
+        && cp "$KEYS_DST" "$KEYS_NEW" \
+        && jq '(.. | select(type == "string" and . == "mod.open:git-graph")) |= "mod.open:git-panel"' "$KEYS_DST" > "$KEYS_NEW" 2>/dev/null \
+        && [ -s "$KEYS_NEW" ]; then
+        BAK="$KEYS_DST.bak-$(date +%Y%m%d%H%M%S)-$$"
+        cp "$KEYS_DST" "$BAK"
+        mv "$KEYS_NEW" "$KEYS_DST"
+        MIGRATED=1
+        say "Changed your mod.open:git-graph binding to mod.open:$MOD in $KEYS_DST (backup: $BAK; Herdr no longer auto-updates a keys file you have edited)"
+      fi
     elif grep -q 'ctrl-shift-g' "$KEYS_DST"; then
       say "ctrl-shift-g is already bound in $KEYS_DST; left it alone. If that is not git-panel, bind another key: add \"mod.open:git-panel\" under \"global\" in $KEYS_DST yourself."
     elif command -v jq >/dev/null 2>&1 \
       && [ "$(jq -s 'length' "$KEYS_DST" 2>/dev/null)" = "1" ] \
       && KEYS_NEW="$HOME_DIR/.keys.json.$$" \
       && cp "$KEYS_DST" "$KEYS_NEW" \
-      && jq -s '.[0] * .[1]' "$KEYS_DST" "$KEYS_SRC" > "$KEYS_NEW" 2>/dev/null; then
-      BAK="$KEYS_DST.bak-$(date +%Y%m%d%H%M%S)"
+      && jq -s '.[0] * .[1]' "$KEYS_DST" "$KEYS_SRC" > "$KEYS_NEW" 2>/dev/null \
+      && [ -s "$KEYS_NEW" ]; then
+      BAK="$KEYS_DST.bak-$(date +%Y%m%d%H%M%S)-$$"
       cp "$KEYS_DST" "$BAK"
       mv "$KEYS_NEW" "$KEYS_DST"
       ADDED=1
@@ -140,9 +181,16 @@ main() {
     fi
   fi
 
+  # A binding to the old mod that was not changed (a symlinked or odd keys.json, no jq, --no-keys) is
+  # dead now: say what to change.
+  if [ "$MIGRATED" -eq 0 ] && [ -f "$HOME_DIR/keys.json" ] && has_old_binding "$HOME_DIR/keys.json"; then
+    say "$HOME_DIR/keys.json still binds mod.open:git-graph, which no longer exists. Replace it with mod.open:$MOD yourself."
+  fi
+
   say ""
   say "Done. Herdr hot-reloads mods."
   if [ "$ADDED" -eq 1 ]; then say "Press ctrl-shift-g to open git-panel."; fi
+  if [ "$MIGRATED" -eq 1 ]; then say "The key you had bound to git-graph now opens git-panel."; fi
   say "The Pull requests tab needs the GitHub CLI: https://cli.github.com (gh auth login)."
 }
 

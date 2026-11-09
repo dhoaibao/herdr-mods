@@ -8,7 +8,7 @@ A collection of mods for the [Herdr](https://herdr.dev) desktop app. Each mod li
 
 ## git-panel
 
-A repository overlay with four tabs. (It was called `git-graph` until it grew past the graph. If you installed that: delete `~/.config/herdr-app/mods/git-graph/` and change `mod.open:git-graph` to `mod.open:git-panel` in your `keys.json` and in any saved tab or layout that uses `--mod git-graph`.)
+A repository overlay with four tabs. (It was called `git-graph` until it grew past the graph. [`install.sh`](install.sh) moves an old `git-graph` install to `<home>/backups/` and points a `keys.json` binding at `mod.open:git-panel`; saved tabs or layouts that use `--mod git-graph` you change yourself. Without the installer: delete `~/.config/herdr-app/mods/git-graph/` and change `mod.open:git-graph` to `mod.open:git-panel` in your `keys.json`.)
 
 **Graph**
 - Lane-based commit graph with ref chips, author and relative time, rendered in a virtual list.
@@ -49,7 +49,7 @@ A repository overlay with four tabs. (It was called `git-graph` until it grew pa
 curl -fsSL https://raw.githubusercontent.com/dhoaibao/herdr-mods/main/install.sh | sh
 ```
 
-[`install.sh`](install.sh) downloads the repository tarball and copies `git-panel` into your Herdr config home. It refuses to overwrite an existing install. Apart from a temporary download directory, it writes only inside the config home. Read it before piping it to a shell.
+[`install.sh`](install.sh) downloads the repository tarball and copies `git-panel` into your Herdr config home. It refuses to overwrite an existing install. If it finds the old `git-graph` mod, it moves that to `<home>/backups/` (so Herdr does not load two copies; nothing is deleted) and changes a `keys.json` binding to `mod.open:git-graph` into `mod.open:git-panel`, after a timestamped backup of the file. Apart from a temporary download directory, it writes only inside the config home. Read it before piping it to a shell.
 
 Key binding: `keys.json` holds your whole keymap, so the installer never creates one (a file with a single key would replace Herdr's default shortcuts). If you already have one and `ctrl-shift-g` is free, it adds the binding with `jq` after saving a backup next to the file. Herdr treats any edited `keys.json` as yours and stops adding new default shortcuts to it. If `jq` is missing, the key is taken, there is no file, or the file is a symlink (dotfiles managers), the installer prints the line to add by hand.
 
