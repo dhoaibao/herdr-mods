@@ -28,21 +28,33 @@ A repository overlay with two tabs.
 - `git`
 - `gh`, authenticated, for the Pull requests tab
 
+![git-graph preview](git-graph/preview.png)
+
 ### Install
 
-1. Copy the mod into your Herdr config home, refusing to overwrite an existing folder. Adjust the target if you set `$HERDR_APP_HOME`.
+```sh
+curl -fsSL https://raw.githubusercontent.com/dhoaibao/herdr-mods/main/install.sh | sh
+```
 
-   ```sh
-   test -e ~/.config/herdr-app/mods/git-graph \
-     && echo "git-graph already installed" \
-     || cp -r git-graph/mods/git-graph ~/.config/herdr-app/mods/
-   ```
+[`install.sh`](install.sh) downloads the repository tarball and copies `git-graph` into your Herdr config home. It refuses to overwrite an existing install. Apart from a temporary download directory, it writes only inside the config home. Read it before piping it to a shell.
 
-2. Merge the key binding from [`git-graph/keys.json`](git-graph/keys.json) into `~/.config/herdr-app/keys.json`, unless `ctrl-shift-g` is already in use:
+Key binding: `keys.json` holds your whole keymap, so the installer never creates one (a file with a single key would replace Herdr's default shortcuts). If you already have one and `ctrl-shift-g` is free, it adds the binding with `jq` after saving a backup next to the file. Herdr treats any edited `keys.json` as yours and stops adding new default shortcuts to it. If `jq` is missing, the key is taken, there is no file, or the file is a symlink (dotfiles managers), the installer prints the line to add by hand.
 
-   ```json
-   { "global": { "ctrl-shift-g": "mod.open:git-graph" } }
-   ```
+| Option / variable | Effect |
+| --- | --- |
+| `sh -s -- --force` | Replace an existing install; the old copy moves to `<home>/backups/` |
+| `sh -s -- --no-keys` | Leave `keys.json` alone |
+| `HERDR_MODS_REF=<commit>` | Install a specific branch, tag or commit instead of `main` |
+| `HERDR_APP_HOME=<dir>` | Use another Herdr config home (default `~/.config/herdr-app`) |
+| `HERDR_MODS_SRC=<dir>` | Install from a local checkout of this repo instead of downloading |
+
+Set variables on the `sh` side of the pipe: `curl -fsSL <url> | HERDR_MODS_REF=<commit> sh`. For a fully pinned install, use the same commit in the `install.sh` URL instead of `main`.
+
+Manual install: copy `git-graph/mods/git-graph` to `~/.config/herdr-app/mods/`. If you have a `~/.config/herdr-app/keys.json` (a keys file is yours to merge, never replace), add [`git-graph/keys.json`](git-graph/keys.json) to it:
+
+```json
+{ "global": { "ctrl-shift-g": "mod.open:git-graph" } }
+```
 
 Herdr hot-reloads mods, so no restart is needed.
 

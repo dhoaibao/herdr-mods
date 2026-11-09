@@ -13,6 +13,8 @@ Source repo for Herdr desktop-app mods, one folder per mod, laid out like a Herd
 - `git-graph/keys.json`: keys the mod expects; users merge it into `~/.config/herdr-app/keys.json`.
 - `git-graph/RECIPE.md`: brief to rebuild the mod. Update it when behavior or gotchas change.
 - `README.md`: mod table, trust note, install steps.
+- `install.sh`: curl-installable POSIX installer (tarball download, never overwrites without `--force`, adds `ctrl-shift-g` to an existing `keys.json` only when free and never creates one, since a one-key file would replace Herdr's default shortcuts). Keep the README install table in step with its options and variables.
+- `git-graph/preview.png`: cropped `herdr-app shot` of the mod on a throwaway demo repo; never include the Herdr sidebar or real workspace names.
 
 ### Canonical sources and generated files
 
@@ -33,6 +35,7 @@ See [docs/README.md](docs/README.md) for where docs go and how to name them.
 
 - `herdr-app check git-graph/mods/git-graph` (renders the initial state only).
 - `node --check git-graph/mods/git-graph/main.js` and `.../prs.js` (syntax).
+- `shellcheck install.sh`; test it offline with a throwaway `HERDR_APP_HOME` and `HERDR_MODS_SRC=$PWD`, never against the real config home.
 - Gap: no automated tests; handlers and later UI states need manual use in the app.
 <!-- b-init-managed:end -->
 
