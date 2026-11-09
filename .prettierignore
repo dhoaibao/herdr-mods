@@ -1,0 +1,7 @@
+node_modules/
+bun.lock
+*.d.ts
+*.md
+*.svg
+*.png
+install.sh

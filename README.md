@@ -87,9 +87,12 @@ It never creates, merges, reviews or closes pull requests, and never forces a pu
 The running app loads `~/.config/herdr-app/mods/<name>/`; this repository holds the source of truth for sharing. Mirror changes between the two.
 
 ```sh
-herdr-app check git-graph/mods/git-graph          # renders the initial state
-node --check git-graph/mods/git-graph/main.js     # syntax
-node --check git-graph/mods/git-graph/prs.js
+bun install                                       # dev tooling only (mods have no dependencies); also installs the git pre-commit hook
+herdr-app check git-graph/mods/git-graph          # renders the initial state; also writes the .d.ts files
+bun run check                                     # eslint, prettier --check, shellcheck, tsc
+bun run format                                    # apply Prettier
 ```
+
+`bun run typecheck` reads the type declarations Herdr writes into the mod folder (`gpui-kit.d.ts`, git-ignored; it declares `gpui-kit`, `gpui-base` and `herdr`), so run `herdr-app check` once first. The pre-commit hook (Husky, `.husky/pre-commit`) runs the same checks and skips `typecheck` or `shellcheck` with a warning when their prerequisite is missing; `bun run check` itself fails in that case. The hook checks the working tree, not only what is staged. Bypass it with `git commit --no-verify` or `HUSKY=0`; a git client that cannot find `bun` (exit 127) needs bun on its PATH, for example via `~/.config/husky/init.sh`. The mods run in Herdr's own runtime, so ESLint assumes no Node or browser globals.
 
 `herdr-app check` does not exercise click handlers or later UI states, so test those in the app. See [`git-graph/RECIPE.md`](git-graph/RECIPE.md) for the build brief and known gpui-kit limitations, and [`AGENTS.md`](AGENTS.md) for contributor and agent guidance.

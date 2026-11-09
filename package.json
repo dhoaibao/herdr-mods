@@ -1,0 +1,22 @@
+{
+  "name": "herdr-mods",
+  "private": true,
+  "description": "Mods for the Herdr desktop app. Dev tooling only: the mods themselves have no dependencies.",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint git-graph/mods",
+    "typecheck": "tsc -p tsconfig.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "shellcheck": "shellcheck install.sh .husky/pre-commit",
+    "check": "bun run lint && bun run format:check && bun run shellcheck && bun run typecheck",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
+  }
+}

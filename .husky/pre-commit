@@ -1,0 +1,22 @@
+# shellcheck shell=sh
+# Runs the `bun run check` steps before every commit: eslint, prettier, shellcheck, tsc.
+# It checks the working tree, not only what is staged. Bypass with `git commit --no-verify` or HUSKY=0.
+# Two checks depend on things a machine may not have; they are skipped with a warning instead of
+# blocking the commit: tsc needs the git-ignored gpui-kit.d.ts that Herdr writes
+# (`herdr-app check git-graph/mods/git-graph`), and shellcheck is a system binary.
+set -e
+
+bun run lint
+bun run format:check
+
+if command -v shellcheck >/dev/null 2>&1; then
+  bun run shellcheck
+else
+  echo "pre-commit: shellcheck not found, skipping it" >&2
+fi
+
+if [ -f git-graph/mods/git-graph/gpui-kit.d.ts ]; then
+  bun run typecheck
+else
+  echo "pre-commit: gpui-kit.d.ts missing, skipping typecheck (run: herdr-app check git-graph/mods/git-graph)" >&2
+fi
