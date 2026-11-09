@@ -8,7 +8,7 @@ A collection of mods for the [Herdr](https://herdr.dev) desktop app. Each mod li
 
 ## git-graph
 
-A repository overlay with three tabs.
+A repository overlay with four tabs.
 
 **Graph**
 - Lane-based commit graph with ref chips, author and relative time, rendered in a virtual list.
@@ -18,6 +18,9 @@ A repository overlay with three tabs.
 - Working-tree state: a count of the entries `git status` lists (an untracked folder counts once) and of conflicts beside the branch chip, and a banner while a merge, cherry-pick, revert, rebase or `git am` is in progress.
 - Commit details with the full hash (Copy), clickable parents, author and committer, changed files, and per-file diffs with intra-line highlighting.
 - Operation status is reported as plain text, including git's own error messages.
+
+**Refs**
+- Read-only lists: local branches (upstream, `↑n`/`↓n`, `gone`, and `merged` when reachable from HEAD), tags (annotated or not), stashes and the reflog (most recent 100). Click a stash to see its files and diff.
 
 **Pull requests** (requires [`gh`](https://cli.github.com))
 - Open, Merged and Closed lists with CI status, draft state, review decision, branch and author.
@@ -77,7 +80,7 @@ herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"p
 | Prop | Values | Meaning |
 | --- | --- | --- |
 | `folder` | path | Repository to show |
-| `tab` | `graph`, `prs`, `config` | Initial tab |
+| `tab` | `graph`, `refs`, `prs`, `config` | Initial tab |
 | `scope` | `all`, `local`, `global` | Initial scope filter of the Config tab |
 | `state` | `open`, `merged`, `closed` | Initial pull-request filter |
 | `pr` | number | Pull request to open in the detail panel |
@@ -86,7 +89,7 @@ herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"p
 
 Herdr mods are unsandboxed JavaScript with the same access as the app. `git-graph` runs these commands in the repository you open it on:
 
-- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track` and `-c`) and read-only queries (`log`, `show`, `status --porcelain=v2`, `for-each-ref`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge or rebase in progress), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
+- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track` and `-c`) and read-only queries (`log`, `show`, `status --porcelain=v2`, `for-each-ref` (including `--merged HEAD`), `stash list`, `reflog`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge or rebase in progress), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
 - `gh`: `pr list`, `pr view`, `pr diff` (read-only, contact GitHub), `pr checkout` (may fetch from a fork and add a remote) and `pr view --web` (opens your browser).
 
 It never creates, merges, reviews or closes pull requests, and never forces a push. Review the source before installing.

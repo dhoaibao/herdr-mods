@@ -12,6 +12,7 @@ How the `git-graph` mod (`git-graph/mods/git-graph/`) is built today: a Herdr de
 | `location()`, `parseLog()`, `layout()` | `main.js` | Pure helpers: where the focused terminal is; split `git log` output into commits; assign each commit a lane and the joins/branches per row. |
 | PR tab | `prs.js` | Functions that take the view as `v` and keep their state on it under `pr*` names (loading, selection, checkout, the toolbar and the panel); see its exports. |
 | Working-tree state | `status.js` | `parseStatus()` counts the entries and conflicts that `git status --porcelain=v2 -z` lists (an untracked folder is one entry); `inProgress()` names a merge, cherry-pick, revert, rebase or `git am` in progress by probing marker files under the git dir (`rev-parse --git-path` plus `readTextFile`). Pure reads; `refresh()` stores the result in `work` and `inprog`. |
+| Refs tab | `refs.js` | Same pattern as `prs.js` with `refs*` state: five read-only reads (`for-each-ref` for branches, merged branches and tags, `stash list`, `reflog`), pure parsers (`parseBranches`, `parseTags`, `parseStashes`, `parseReflog`), the toolbar and the virtual lists. A stash opens in the commit detail panel of `main.js` through `select()` and `detailPanel(t, mono, commit)`. Read-only. |
 | Config tab | `config.js` | Same pattern as `prs.js` with `cfg*` state: runs `git config --list --show-origin --show-scope -z`, `parseConfig()` splits it into settings, `maskKey()` and `maskValue()` hide credentials in keys and values, then the toolbar and panel render them. Read-only. |
 | Icons | `*.svg` | `branch`, `fetch`, `pull`, `push`, `more`; drawn in the button text color. |
 | Placement | `mod.json` | Overlay, 1200 x 900. |
@@ -32,7 +33,7 @@ External surface (all from Herdr's built-in modules, typed by the generated `gpu
 
 - The view owns all state; helper functions in `prs.js` mutate it through `v`. Nothing outlives the overlay except `CACHE` and `LAST_TAB`.
 - Read-only git is run with `--no-optional-locks` and `core.fsmonitor=false` so the mod's own reads never trigger its folder watch. The Config tab's `git config --list` is the exception: it takes no locks, and those `-c` flags would show up as `command`-scope rows.
-- The Config tab only reads (`config --list`). Writes to git are limited to `fetch --all --prune`, `pull --ff-only`, `push`, `switch`; writes through `gh` to `pr checkout` (a local branch switch). The mod never closes, merges, reviews or creates a PR. See the ADRs below.
+- The Refs and Config tabs only read (`for-each-ref`, `stash list`, `reflog`, `config --list`). Writes to git are limited to `fetch --all --prune`, `pull --ff-only`, `push`, `switch`; writes through `gh` to `pr checkout` (a local branch switch). The mod never closes, merges, reviews or creates a PR. See the ADRs below.
 - The repo copy is the source for sharing; the running app loads `~/.config/herdr-app/mods/git-graph/`. They are kept in sync by hand ([runbook](../runbooks/sync-live-copy.md)).
 
 ## Related ADRs

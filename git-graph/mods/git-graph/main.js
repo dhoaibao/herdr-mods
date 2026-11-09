@@ -3,6 +3,7 @@ import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualLi
 import { spaces, panes, focused, exec, watchFolder, theme, settings, props } from "herdr";
 import { loadPrs, prPanel, prToolbar, resetPrs } from "./prs.js";
 import { initConfig, loadConfig, configPanel, configToolbar, resetConfig } from "./config.js";
+import { initRefs, loadRefs, refsPanel, refsToolbar, resetRefs } from "./refs.js";
 import { parseStatus, inProgress } from "./status.js";
 
 // Where the focused terminal is (same rule as the shipped Changes panel).
@@ -105,7 +106,7 @@ function layout(commits) {
 // The last graph read for each folder. Module code outlives a closed overlay, so reopening the
 // mod paints the previous graph at once and refreshes it in the background.
 const CACHE = new Map();
-const TABS = ["graph", "prs", "config"];
+const TABS = ["graph", "refs", "prs", "config"];
 let LAST_TAB = "graph"; // reopening the mod returns to the tab it was closed on
 const CACHED = [
   "root",
@@ -160,6 +161,7 @@ export default class GitGraph extends View {
     this.prLoading = false;
     resetPrs(this);
     initConfig(this);
+    initRefs(this);
     const raw = props()?.pr,
       want = typeof raw === "number" || (typeof raw === "string" && /^\d+$/.test(raw)) ? Number(raw) : NaN;
     this.prWant = Number.isSafeInteger(want) && want > 0 ? want : null;
@@ -244,6 +246,7 @@ export default class GitGraph extends View {
       this.armed = false;
       resetPrs(this);
       resetConfig(this);
+      resetRefs(this);
       force = true;
     }
     if (!cwd) return;
@@ -332,7 +335,8 @@ export default class GitGraph extends View {
         CACHE.delete(context);
         CACHE.set(context, Object.fromEntries(CACHED.map((k) => [k, this[k]])));
         if (CACHE.size > 8) CACHE.delete(CACHE.keys().next().value);
-        if (this.sel && !commits.some((c) => c.hash === this.sel)) this.clearSel();
+        // On the Refs tab the open commit is a stash, which the graph log never lists.
+        if (this.sel && this.tab !== "refs" && !commits.some((c) => c.hash === this.sel)) this.clearSel();
       } catch (e) {
         if (this.ctx() === context) {
           this.error = String(e);
@@ -343,16 +347,21 @@ export default class GitGraph extends View {
         if (changed) cx.notify();
         if (this.tab === "prs") loadPrs(this, cx);
         if (this.tab === "config") loadConfig(this, cx);
+        if (this.tab === "refs") loadRefs(this, cx);
       }
     });
   }
 
   setTab(tab, cx) {
     if (this.tab === tab) return;
+    // The commit detail panel is shared: a commit open on the Graph tab and a stash open on the
+    // Refs tab would replace each other, so the open one is closed when moving into or out of Refs.
+    if (this.sel && (tab === "refs" || this.tab === "refs")) this.clearSel();
     this.tab = LAST_TAB = tab;
     this.menu = false;
     if (tab === "prs") loadPrs(this, cx);
     if (tab === "config") loadConfig(this, cx);
+    if (tab === "refs") loadRefs(this, cx);
     cx.notify();
   }
 
@@ -1075,8 +1084,8 @@ export default class GitGraph extends View {
   }
 
   // The selected commit: its message and changed files, or one file's diff.
-  detailPanel(t, mono) {
-    const c = this.rows.find((r) => r.c.hash === this.sel)?.c;
+  // `c` is the commit shown; the Refs tab passes a stash (a commit the graph log does not list).
+  detailPanel(t, mono, c = this.rows.find((r) => r.c.hash === this.sel)?.c) {
     const btn = (id, label, fn) => this.small(id, label, fn, t);
     const head = h_flex()
       .h(40)
@@ -1560,6 +1569,7 @@ export default class GitGraph extends View {
                 .h_full()
                 .gap(2)
                 .child(this.tabButton("gg-tab-graph", "Graph", "graph", t))
+                .child(this.tabButton("gg-tab-refs", "Refs", "refs", t))
                 .child(this.tabButton("gg-tab-prs", "Pull requests", "prs", t))
                 .child(this.tabButton("gg-tab-config", "Config", "config", t)),
             ),
@@ -1617,6 +1627,7 @@ export default class GitGraph extends View {
                 ),
             )
             .when(this.tab === "prs", (e) => e.children(prToolbar(this, t)))
+            .when(this.tab === "refs", (e) => e.children(refsToolbar(this, t)))
             .when(this.tab === "config", (e) => e.children(configToolbar(this, t))),
         )
         .when(Boolean(this.busy || this.note), (e) =>
@@ -1714,6 +1725,7 @@ export default class GitGraph extends View {
           ),
         )
         .when(this.tab === "prs", (e) => e.child(prPanel(this, t, mono)))
+        .when(this.tab === "refs", (e) => e.child(refsPanel(this, t, mono)))
         .when(this.tab === "config", (e) => e.child(configPanel(this, t, mono)))
         .when(graph && this.more, (e) =>
           e.child(
