@@ -1,17 +1,17 @@
-# git-graph expansion
+# git-panel expansion
 
 Status: implemented (P1-P5 committed; P6 implemented)
 
 ## Goal
 
-Show more of the information developers need and add safe, local write actions to `git-graph`, in small phases that each ship on their own.
+Show more of the information developers need and add safe, local write actions to `git-panel`, in small phases that each ship on their own.
 
 ## Decisions
 
 - Writes: create-only actions plus housekeeping (branch/tag here, detached checkout, stash push/apply, delete merged branch with `-d`, rename, stash pop/drop, cherry-pick/revert, Abort).
 - No staging or commit UI; committing stays with Herdr's Changes panel.
 - Branch, tag and stash management lives in a new Refs tab (`refs.js`).
-- New modules only (`refs.js`, `status.js`; `diff.js` extracted when the stash diff needs it). `main.js` is not split up front.
+- New modules only (`refs.js`, `status.js`; `diff.js` extracted when the stash diff needs it). `main.js` is not split up front. (Split afterwards into feature modules, and the mod renamed from `git-graph`: [ADR-008](../decisions/ADR-008-split-into-feature-modules-and-rename.md).)
 
 ## Requirements
 
@@ -62,7 +62,7 @@ Per phase, on a throwaway demo repo:
 - P5: `branch -d` on an unmerged branch shows git's refusal; the current branch has no Delete; cherry-pick with a dirty tree is refused; a conflicting cherry-pick shows the banner and Abort (two clicks) restores HEAD; stash drop with a stale index is refused.
 - P6: file history jumps to commits; the PR chip shows on a branch with a PR and nothing appears otherwise.
 
-Every phase: `herdr-app check git-graph/mods/git-graph` passes, `bun run check` passes, `node --check` passes on every module (add `config.js` and new files to RECIPE's Done when), live copy mirrored with `diff -rq` clean, README Security compared by hand against `rg -n 'op\(|exec\(' git-graph/mods/git-graph/*.js`, RECIPE and `docs/architecture/git-graph.md` updated, `preview.png` retaken in P1 and P4 per the runbook.
+Every phase: `herdr-app check git-panel/mods/git-panel` passes, `bun run check` passes, `node --check` passes on every module (add `config.js` and new files to RECIPE's Done when), live copy mirrored with `diff -rq` clean, README Security compared by hand against `rg -n 'op\(|exec\(' git-panel/mods/git-panel/*.js`, RECIPE and `docs/architecture/git-panel.md` updated, `preview.png` retaken in P1 and P4 per the runbook.
 
 ## Risks
 

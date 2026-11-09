@@ -14,7 +14,7 @@ Get a working checkout where `bun run check` and the git pre-commit hook pass.
 
 1. Clone the repo and `cd` into it.
 2. `bun install`. This installs the dev tooling and activates the Husky pre-commit hook (`core.hooksPath=.husky/_`).
-3. `herdr-app check git-graph/mods/git-graph`. It renders the mod once and writes the git-ignored `gpui-kit.d.ts` and `jsconfig.json` next to it, which `tsc` needs.
+3. `herdr-app check git-panel/mods/git-panel`. It renders the mod once and writes the git-ignored `gpui-kit.d.ts` and `jsconfig.json` next to it, which `tsc` needs.
 4. `bun run check` (ESLint, Prettier check, shellcheck, tsc).
 5. Format with `bun run format` before committing.
 

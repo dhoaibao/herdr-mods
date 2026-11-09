@@ -1,11 +1,11 @@
 #!/bin/sh
-# Install the git-graph mod for the Herdr desktop app.
+# Install the git-panel mod for the Herdr desktop app.
 #
 #   curl -fsSL https://raw.githubusercontent.com/dhoaibao/herdr-mods/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/dhoaibao/herdr-mods/main/install.sh | sh -s -- --force
 #
 # Options:
-#   --force      replace an existing git-graph mod (the old one is moved to <home>/backups/)
+#   --force      replace an existing git-panel mod (the old one is moved to <home>/backups/)
 #   --no-keys    do not touch keys.json
 #   -h, --help   show this help
 #
@@ -21,13 +21,13 @@
 # Everything runs inside main(), called on the last line, so a truncated download runs nothing.
 
 REPO="dhoaibao/herdr-mods"
-MOD="git-graph"
+MOD="git-panel"
 
 usage() {
   cat <<'EOF'
 Usage: install.sh [--force] [--no-keys]
 
-  --force      replace an existing git-graph mod (the old one is moved to <home>/backups/)
+  --force      replace an existing git-panel mod (the old one is moved to <home>/backups/)
   --no-keys    do not touch keys.json
 
 Environment: HERDR_APP_HOME (config home), HERDR_MODS_REF (branch, tag or commit),
@@ -120,7 +120,7 @@ main() {
       # A symlink (dotfiles managers) would be replaced by a plain file when the merge is moved in.
       say "$KEYS_DST is a symlink or not a regular file; left it alone; $MANUAL"
     elif grep -q 'ctrl-shift-g' "$KEYS_DST"; then
-      say "ctrl-shift-g is already bound in $KEYS_DST; left it alone. If that is not git-graph, bind another key: add \"mod.open:git-graph\" under \"global\" in $KEYS_DST yourself."
+      say "ctrl-shift-g is already bound in $KEYS_DST; left it alone. If that is not git-panel, bind another key: add \"mod.open:git-panel\" under \"global\" in $KEYS_DST yourself."
     elif command -v jq >/dev/null 2>&1 \
       && [ "$(jq -s 'length' "$KEYS_DST" 2>/dev/null)" = "1" ] \
       && KEYS_NEW="$HOME_DIR/.keys.json.$$" \
@@ -138,7 +138,7 @@ main() {
 
   say ""
   say "Done. Herdr hot-reloads mods."
-  if [ "$ADDED" -eq 1 ]; then say "Press ctrl-shift-g to open git-graph."; fi
+  if [ "$ADDED" -eq 1 ]; then say "Press ctrl-shift-g to open git-panel."; fi
   say "The Pull requests tab needs the GitHub CLI: https://cli.github.com (gh auth login)."
 }
 

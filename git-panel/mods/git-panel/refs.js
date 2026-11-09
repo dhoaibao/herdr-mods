@@ -1,15 +1,15 @@
-// The Refs tab of the Git Graph mod: local branches (upstream, ahead/behind, merged), tags, stashes
+// The Refs tab of the Git Panel mod: local branches (upstream, ahead/behind, merged), tags, stashes
 // and the reflog. The lists are read-only; the only writes here are the branch and stash actions of
 // ADR-007 (rename and delete a branch, stash push, apply, pop and drop), all run through the view's
 // op(). A stash can be opened to see its files and
-// diff in the commit detail panel of main.js. Functions take the GitGraph view as `v` and keep their state on it under
+// diff in the commit detail panel (detail.js). Functions take the GitPanel view as `v` and keep their state on it under
 // the `refs*` names.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
 
 const ROW = 28;
-// The same read-only flags as main.js: no index refresh or lock, so our own folder watch never fires.
+// The same read-only flags as shared.js: no index refresh or lock, so our own folder watch never fires.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 export const SECTIONS = [
   ["branches", "Branches"],

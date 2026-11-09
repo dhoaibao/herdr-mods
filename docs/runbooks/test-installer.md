@@ -24,7 +24,7 @@ Check `install.sh` without touching your real Herdr config, offline first and th
 
 ## Verify
 
-`"$H/mods/git-graph/mod.json"` exists, no `"$H"/.install-*` or `"$H"/.keys.json.*` leftovers remain, and `herdr-app check "$H/mods/git-graph"` passes.
+`"$H/mods/git-panel/mod.json"` exists, no `"$H"/.install-*` or `"$H"/.keys.json.*` leftovers remain, and `herdr-app check "$H/mods/git-panel"` passes.
 
 ## Troubleshooting
 

@@ -1,7 +1,7 @@
-// The Pull requests tab of the Git Graph mod, and the chip for the current branch's pull request on
+// The Pull requests tab of the Git Panel mod, and the chip for the current branch's pull request on
 // the Graph tab. Everything here is read from GitHub through the `gh` CLI (list, view, diff); the
 // only changes are `gh pr checkout` (a local branch switch) and opening the PR in the browser.
-// Functions take the GitGraph view as `v` and keep their state on it under the `pr*` names.
+// Functions take the GitPanel view as `v` and keep their state on it under the `pr*` names.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, TextView, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";

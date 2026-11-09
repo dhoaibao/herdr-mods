@@ -1,13 +1,13 @@
-// File history for the commit detail panel of the Git Graph mod: the commits that touched one file,
+// File history for the commit detail panel of the Git Panel mod: the commits that touched one file,
 // from the open commit back (`git log --follow`), shown in place of that file's diff; a click jumps to
 // the commit in the graph.
-// Read-only. Functions take the GitGraph view as `v` and keep their state on it as `v.fileHist`.
+// Read-only. Functions take the GitPanel view as `v` and keep their state on it as `v.fileHist`.
 import { div } from "gpui-kit";
 import { h_flex, Scrollbar, v_flex, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
 
 const ROW = 28;
-// The same read-only flags as main.js: no index refresh or lock, so our own folder watch never fires.
+// The same read-only flags as shared.js: no index refresh or lock, so our own folder watch never fires.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 const LIMIT = 100;
 

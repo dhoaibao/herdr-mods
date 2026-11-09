@@ -18,5 +18,5 @@ Herdr lists community mods at herdr.dev/mods when a public GitHub repo has one f
 
 ## Consequences
 
-- A second mod is a new top-level folder with the same shape; `install.sh` currently installs only `git-graph` and would need a mod argument.
-- Gallery listing is outside our control (indexed within about an hour); the page for a subfolder mod is `herdr.dev/mods/<owner>/<repo>--<folder>/` (for this repo, `dhoaibao/herdr-mods--git-graph`), as seen in the gallery's markup for other mods.
+- A second mod is a new top-level folder with the same shape; `install.sh` currently installs only `git-panel` and would need a mod argument.
+- Gallery listing is outside our control (indexed within about an hour); the page for a subfolder mod is `herdr.dev/mods/<owner>/<repo>--<folder>/` (for this repo, `dhoaibao/herdr-mods--git-panel`), as seen in the gallery's markup for other mods.

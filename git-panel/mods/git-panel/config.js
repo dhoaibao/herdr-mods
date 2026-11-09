@@ -1,6 +1,6 @@
-// The Config tab of the Git Graph mod: a read-only view of the effective git configuration for the
+// The Config tab of the Git Panel mod: a read-only view of the effective git configuration for the
 // repository (`git config --list --show-origin --show-scope`), grouped by section, with the scope
-// each setting comes from. Nothing here writes configuration. Functions take the GitGraph view as `v`
+// each setting comes from. Nothing here writes configuration. Functions take the GitPanel view as `v`
 // and keep their state on it under the `cfg*` names.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";

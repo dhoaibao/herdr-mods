@@ -4,7 +4,7 @@
   "description": "Mods for the Herdr desktop app. Dev tooling only: the mods themselves have no dependencies.",
   "type": "module",
   "scripts": {
-    "lint": "eslint git-graph/mods",
+    "lint": "eslint git-panel/mods",
     "typecheck": "tsc -p tsconfig.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

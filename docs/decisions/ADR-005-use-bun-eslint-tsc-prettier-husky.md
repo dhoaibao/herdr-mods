@@ -22,5 +22,5 @@ Deliberate settings:
 ## Consequences
 
 - The first Prettier run rewrote most of `main.js` and `prs.js`. The formatting itself was verified behavior-preserving (identical syntax trees before and after); the same commit also carries three small lint and type fixes (`const`, an `alpha()` helper, JSDoc types) that review found behavior-preserving.
-- `tsc` only works on a machine where Herdr has written `gpui-kit.d.ts` (`herdr-app check git-graph/mods/git-graph`); CI would need that step.
+- `tsc` only works on a machine where Herdr has written `gpui-kit.d.ts` (`herdr-app check git-panel/mods/git-panel`); CI would need that step.
 - Type checking is a coarse guard, not a strong one.

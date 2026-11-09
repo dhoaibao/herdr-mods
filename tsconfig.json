@@ -2,7 +2,7 @@
   "// why": [
     "Type check for the mods, mirroring the jsconfig.json Herdr writes next to each mod.",
     "The module declarations (gpui-kit.d.ts, herdr.d.ts) are written by Herdr and git-ignored:",
-    "run `herdr-app check git-graph/mods/git-graph` once on a machine with Herdr to create them.",
+    "run `herdr-app check git-panel/mods/git-panel` once on a machine with Herdr to create them.",
     "strictNullChecks is off on purpose: a View assigns its state in init(), which TypeScript cannot see as definite assignment.",
     "noImplicitAny is off because the mods are plain JS with no annotations: it would report ~190 untyped parameters and drown the real type errors."
   ],
@@ -21,5 +21,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["git-graph/mods/*/*.js", "git-graph/mods/*/*.d.ts"]
+  "include": ["git-panel/mods/*/*.js", "git-panel/mods/*/*.d.ts"]
 }

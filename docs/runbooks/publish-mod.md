@@ -15,7 +15,7 @@ Make a mod appear at herdr.dev/mods.
 1. `bun run check` and push `main`.
 2. On the repo page, open the gear next to **About**, add the topic `herdr-mod` and save. (In a narrow browser window GitHub's compact layout may put **About** below the file list.)
 3. Wait up to an hour; Herdr says the mod shows up "within the hour".
-4. Open `https://herdr.dev/mods/<owner>/<repo>--<folder>/` (for this repo: `https://herdr.dev/mods/dhoaibao/herdr-mods--git-graph/`) or search the gallery for the owner. The `<repo>--<folder>` form is how other subfolder mods appear in the gallery; it is not documented by Herdr.
+4. Open `https://herdr.dev/mods/<owner>/<repo>--<folder>/` (for this repo: `https://herdr.dev/mods/dhoaibao/herdr-mods--git-panel/`) or search the gallery for the owner. The `<repo>--<folder>` form is how other subfolder mods appear in the gallery; it is not documented by Herdr.
 
 ## Verify
 

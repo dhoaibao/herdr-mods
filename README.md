@@ -4,11 +4,11 @@ A collection of mods for the [Herdr](https://herdr.dev) desktop app. Each mod li
 
 | Mod | Description | Default key |
 | --- | --- | --- |
-| [git-graph](git-graph/) | Commit graph, everyday git operations and a GitHub pull-request browser | `ctrl-shift-g` |
+| [git-panel](git-panel/) | Commit graph, branches, tags and stashes, everyday git operations, a GitHub pull-request browser and a git config view | `ctrl-shift-g` |
 
-## git-graph
+## git-panel
 
-A repository overlay with four tabs.
+A repository overlay with four tabs. (It was called `git-graph` until it grew past the graph. If you installed that: delete `~/.config/herdr-app/mods/git-graph/` and change `mod.open:git-graph` to `mod.open:git-panel` in your `keys.json` and in any saved tab or layout that uses `--mod git-graph`.)
 
 **Graph**
 - Lane-based commit graph with ref chips, author and relative time, rendered in a virtual list.
@@ -33,7 +33,7 @@ A repository overlay with four tabs.
 - Read-only list of the effective git configuration (`git config --list --show-origin --show-scope`), grouped by section, with the scope (local, global, system, ...) and file each setting comes from.
 - Filter by scope (All, Local, Global) and by text. Masking is best effort: credentials in URLs (including `url.<base>.insteadOf` keys) and proxy settings, `http.extraHeader`, and values of settings whose name contains `pass`, `token` or `secret` are hidden; other secrets stored under arbitrary keys are not. Editing configuration is intentionally out of scope.
 
-![git-graph config tab](git-graph/preview-config.png)
+![git-panel config tab](git-panel/preview-config.png)
 
 ### Requirements
 
@@ -41,7 +41,7 @@ A repository overlay with four tabs.
 - `git`
 - `gh`, authenticated, for the Pull requests tab and the pull request chip
 
-![git-graph preview](git-graph/preview.png)
+![git-panel preview](git-panel/preview.png)
 
 ### Install
 
@@ -49,7 +49,7 @@ A repository overlay with four tabs.
 curl -fsSL https://raw.githubusercontent.com/dhoaibao/herdr-mods/main/install.sh | sh
 ```
 
-[`install.sh`](install.sh) downloads the repository tarball and copies `git-graph` into your Herdr config home. It refuses to overwrite an existing install. Apart from a temporary download directory, it writes only inside the config home. Read it before piping it to a shell.
+[`install.sh`](install.sh) downloads the repository tarball and copies `git-panel` into your Herdr config home. It refuses to overwrite an existing install. Apart from a temporary download directory, it writes only inside the config home. Read it before piping it to a shell.
 
 Key binding: `keys.json` holds your whole keymap, so the installer never creates one (a file with a single key would replace Herdr's default shortcuts). If you already have one and `ctrl-shift-g` is free, it adds the binding with `jq` after saving a backup next to the file. Herdr treats any edited `keys.json` as yours and stops adding new default shortcuts to it. If `jq` is missing, the key is taken, there is no file, or the file is a symlink (dotfiles managers), the installer prints the line to add by hand.
 
@@ -63,10 +63,10 @@ Key binding: `keys.json` holds your whole keymap, so the installer never creates
 
 Set variables on the `sh` side of the pipe: `curl -fsSL <url> | HERDR_MODS_REF=<commit> sh`. For a fully pinned install, use the same commit in the `install.sh` URL instead of `main`.
 
-Manual install: copy `git-graph/mods/git-graph` to `~/.config/herdr-app/mods/`. If you have a `~/.config/herdr-app/keys.json` (a keys file is yours to merge, never replace), add [`git-graph/keys.json`](git-graph/keys.json) to it:
+Manual install: copy `git-panel/mods/git-panel` to `~/.config/herdr-app/mods/`. If you have a `~/.config/herdr-app/keys.json` (a keys file is yours to merge, never replace), add [`git-panel/keys.json`](git-panel/keys.json) to it:
 
 ```json
-{ "global": { "ctrl-shift-g": "mod.open:git-graph" } }
+{ "global": { "ctrl-shift-g": "mod.open:git-panel" } }
 ```
 
 Herdr hot-reloads mods, so no restart is needed.
@@ -76,7 +76,7 @@ Herdr hot-reloads mods, so no restart is needed.
 Press `ctrl-shift-g` to open the overlay on the current folder. To open it as a tab with specific options:
 
 ```sh
-herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"prs","state":"open"}'
+herdr-app do tab.new --mod git-panel --props '{"folder":"/path/to/repo","tab":"prs","state":"open"}'
 ```
 
 | Prop | Values | Meaning |
@@ -90,7 +90,7 @@ herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"p
 
 ## Security
 
-Herdr mods are unsandboxed JavaScript with the same access as the app. `git-graph` runs these commands in the repository you open it on:
+Herdr mods are unsandboxed JavaScript with the same access as the app. `git-panel` runs these commands in the repository you open it on:
 
 - `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track`, `-c` and `--detach`), `branch <name> <hash>`, `tag` (lightweight, or `-a -m` with a message), `stash push --include-untracked`, `stash apply <hash>`, `stash pop stash@{n}`, `stash drop stash@{n}`, `branch -m`, `branch -d` (never `-D`), `cherry-pick <hash>`, `revert --no-edit <hash>`, `merge`/`rebase`/`cherry-pick`/`revert` with `--abort`, and read-only queries (`log` (including `--follow` for a file's history), `show`, `status --porcelain=v2`, `for-each-ref` (including `--merged HEAD`), `stash list`, `reflog`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge, rebase, cherry-pick, revert or patch in progress, including before an Abort, and `--verify` before a stash pop, drop or branch delete), `check-ref-format` (before a branch or tag is created or renamed), `status --porcelain --untracked-files=no` (before a cherry-pick or revert), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
 - `gh`: `pr list`, `pr view` (with a number for the detail panel; without one, about once a minute while the Graph tab is selected and wide, and only after the Pull requests tab was opened in that view, for the current branch's chip), `pr diff` (read-only, contact GitHub), `pr checkout` (may fetch from a fork and add a remote) and `pr view --web` (opens your browser).
@@ -103,11 +103,11 @@ The running app loads `~/.config/herdr-app/mods/<name>/`; this repository holds 
 
 ```sh
 bun install                                       # dev tooling only (mods have no dependencies); also installs the git pre-commit hook
-herdr-app check git-graph/mods/git-graph          # renders the initial state; also writes the .d.ts files
+herdr-app check git-panel/mods/git-panel          # renders the initial state; also writes the .d.ts files
 bun run check                                     # eslint, prettier --check, shellcheck, tsc
 bun run format                                    # apply Prettier
 ```
 
 `bun run typecheck` reads the type declarations Herdr writes into the mod folder (`gpui-kit.d.ts`, git-ignored; it declares `gpui-kit`, `gpui-base` and `herdr`), so run `herdr-app check` once first. The pre-commit hook (Husky, `.husky/pre-commit`) runs the same checks and skips `typecheck` or `shellcheck` with a warning when their prerequisite is missing; `bun run check` itself fails in that case. The hook checks the working tree, not only what is staged. Bypass it with `git commit --no-verify` or `HUSKY=0`; a git client that cannot find `bun` (exit 127) needs bun on its PATH, for example via `~/.config/husky/init.sh`. The mods run in Herdr's own runtime, so ESLint assumes no Node or browser globals.
 
-`herdr-app check` does not exercise click handlers or later UI states, so test those in the app. See [`git-graph/RECIPE.md`](git-graph/RECIPE.md) for the build brief and known gpui-kit limitations, and [`AGENTS.md`](AGENTS.md) for contributor and agent guidance.
+`herdr-app check` does not exercise click handlers or later UI states, so test those in the app. See [`git-panel/RECIPE.md`](git-panel/RECIPE.md) for the build brief and known gpui-kit limitations, and [`AGENTS.md`](AGENTS.md) for contributor and agent guidance.

@@ -7,7 +7,7 @@ export default [
   { ignores: ["node_modules/**", "**/*.d.ts"] },
   js.configs.recommended,
   {
-    files: ["git-graph/mods/**/*.js"],
+    files: ["git-panel/mods/**/*.js"],
     languageOptions: { ecmaVersion: 2022, sourceType: "module" },
     rules: {
       "no-unused-vars": ["error", { args: "none", caughtErrors: "none" }],

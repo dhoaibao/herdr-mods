@@ -11,9 +11,9 @@ Keep the mod Herdr actually runs (`~/.config/herdr-app/mods/<mod>/`) identical t
 
 ## Steps
 
-1. From the repo root, compare the two folders in both directions, skipping the files Herdr generates: `diff -rq -x jsconfig.json -x '*.d.ts' -x '*.error' git-graph/mods/git-graph "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/git-graph"`.
-2. Copy only the differing mod files (`main.js`, `prs.js`, `config.js`, `status.js`, `refs.js`, `mod.json`, `*.svg`) into the live folder. Never copy `jsconfig.json` or `*.d.ts`, and never overwrite a file edited only in the live copy without looking at it first.
-3. `herdr-app check "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/git-graph"`.
+1. From the repo root, compare the two folders in both directions, skipping the files Herdr generates: `diff -rq -x jsconfig.json -x '*.d.ts' -x '*.error' git-panel/mods/git-panel "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/git-panel"`.
+2. Copy only the differing mod files (every `*.js`, `mod.json`, `*.svg`) into the live folder, and delete from the live folder a `.js` file that no longer exists in the repo copy. Never copy `jsconfig.json` or `*.d.ts`, and never overwrite a file edited only in the live copy without looking at it first.
+3. `herdr-app check "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/git-panel"`.
 
 ## Verify
 
