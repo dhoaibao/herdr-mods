@@ -14,6 +14,7 @@ A repository overlay with three tabs.
 - Lane-based commit graph with ref chips, author and relative time, rendered in a virtual list.
 - Branch menu: filter, switch, track a remote branch, or create a new one.
 - Fetch, Pull (`--ff-only`) and Push with ahead/behind indicators. Push asks for a second click and never forces. A branch that never had an upstream is published with `push -u origin HEAD`; one whose upstream was deleted on the remote is not re-published (the mod tells you instead); otherwise it runs a plain `push`.
+- Search the loaded commits by subject, author, ref name or hash: non-matches are dimmed, `Enter` and `Shift+Enter` step through the matches.
 - Working-tree state: a count of the entries `git status` lists (an untracked folder counts once) and of conflicts beside the branch chip, and a banner while a merge, cherry-pick, revert, rebase or `git am` is in progress.
 - Commit details with the full hash (Copy), clickable parents, author and committer, changed files, and per-file diffs with intra-line highlighting.
 - Operation status is reported as plain text, including git's own error messages.

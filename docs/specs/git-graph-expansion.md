@@ -71,7 +71,7 @@ Every phase: `herdr-app check git-graph/mods/git-graph` passes, `bun run check` 
 - Rebase detection via `rev-parse --git-path` plus `readTextFile` is untested (including remote `on`); confirm in P1.
 - `gh` field names for R6 are unverified.
 - No automated tests; pure parsers could be tested with `bun test` but that widens ADR-005 (open item).
-- Toolbar space at narrow widths; collapse search under 560 px.
+- Toolbar space at narrow widths; hide the search box when the overlay is not wider than 820 px (room beside the branch chip, pills and Fetch/Pull/Push); a hidden search counts as empty.
 
 ## Out of scope
 

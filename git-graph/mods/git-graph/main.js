@@ -51,6 +51,16 @@ function parseLog(text) {
     });
 }
 
+// Whether a commit matches the (lowercased) search text: subject, author, a ref name, or the start of its hash.
+function matches(c, q) {
+  return (
+    c.subject.toLowerCase().includes(q) ||
+    c.author.toLowerCase().includes(q) ||
+    c.hash.startsWith(q) ||
+    c.refs.some((r) => r.name.toLowerCase().includes(q))
+  );
+}
+
 // Assigns each commit a lane and records, per row, which lanes enter from above (before),
 // leave below (after), and which other lanes join or branch off at this commit.
 function layout(commits) {
@@ -126,6 +136,7 @@ export default class GitGraph extends View {
     this.diff = [];
     this.diffWidth = 300;
     this.wide = true;
+    this.roomy = true; // room for the search box in the controls row
     /** @type {string} the theme's mono font, set on each render for the row renderers */
     this.mono = "JetBrains Mono";
     this.branch = null;
@@ -157,6 +168,26 @@ export default class GitGraph extends View {
       this.filter = this.input.value().trim();
       cx.notify();
     });
+    // Search: matches among the loaded rows are found by hits() (memoized on the rows and the text).
+    // Typing jumps to the first match; Enter and Shift+Enter step through them.
+    this.search = "";
+    /** @type {string | null} hash of the match the list was last moved to */
+    this.curHit = null;
+    this.hitRows = null;
+    this.hitQuery = null;
+    /** @type {number[]} row indexes of the matches */
+    this.hitList = [];
+    /** @type {Set<string>} hashes of the matches */
+    this.hitSet = new Set();
+    this.searchInput = InputState.new({ placeholder: "Search commits" });
+    this.searchInput.on("change", (_e, cx) => {
+      this.search = this.searchInput.value().trim().toLowerCase();
+      this.curHit = null;
+      this.hits();
+      if (this.hitList.length) this.goHit(0, cx);
+      else cx.notify();
+    });
+    this.searchInput.on("submit", (e, cx) => this.nextHit(e.shift ? -1 : 1, cx));
     const context = this.ctx(),
       hit = CACHE.get(context);
     if (hit) {
@@ -700,6 +731,90 @@ export default class GitGraph extends View {
     cx.notify();
   }
 
+  // The rows that match the search, recomputed only when the rows or the text changed. While the
+  // box is hidden (a narrow overlay) the search counts as empty, so no row stays dimmed unexplained;
+  // hitQuery is the text actually applied.
+  hits() {
+    const q = this.roomy ? this.search : "";
+    if (this.hitRows === this.rows && this.hitQuery === q) return;
+    this.hitRows = this.rows;
+    this.hitQuery = q;
+    this.hitList = [];
+    this.hitSet = new Set();
+    if (q) {
+      this.rows.forEach((r, i) => {
+        if (matches(r.c, q)) {
+          this.hitList.push(i);
+          this.hitSet.add(r.c.hash);
+        }
+      });
+    }
+    if (this.curHit && !this.hitSet.has(this.curHit)) this.curHit = null;
+  }
+
+  goHit(i, cx) {
+    const at = this.hitList[i];
+    this.curHit = this.rows[at].c.hash;
+    this.scroll.scroll_to_item(at, "center");
+    cx.notify();
+  }
+
+  nextHit(step, cx) {
+    this.hits();
+    const n = this.hitList.length;
+    if (!n) return;
+    const cur = this.hitList.findIndex((at) => this.rows[at].c.hash === this.curHit);
+    this.goHit(cur < 0 ? (step > 0 ? 0 : n - 1) : (cur + step + n) % n, cx);
+  }
+
+  // The search box with its match count and step buttons.
+  searchBox(t) {
+    const n = this.hitList.length,
+      at = this.hitList.findIndex((i) => this.rows[i].c.hash === this.curHit);
+    return h_flex()
+      .flex_none()
+      .gap(8)
+      .items_center()
+      .child(
+        div()
+          .id("gg-search")
+          .w(200)
+          .h(28)
+          .flex_none()
+          .px(10)
+          .flex()
+          .items_center()
+          .rounded(6)
+          .border_1()
+          .border_color(t.border)
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .child(Input.new(this.searchInput).h_full().text_size(13).text_color(t.foreground)),
+      )
+      .when(Boolean(this.search), (e) =>
+        e.child(
+          div()
+            .flex_none()
+            .text_size(12)
+            .text_color(n ? t.muted : t.ansi1)
+            .child(
+              n
+                ? at < 0
+                  ? `${n} match${n === 1 ? "" : "es"}`
+                  : `${at + 1}/${n}`
+                : this.more
+                  ? "No match in loaded commits"
+                  : "No match",
+            ),
+        ),
+      )
+      .when(n > 1, (e) =>
+        e
+          // Like the toolbar buttons, ignore a click that only dismissed the branch menu.
+          .child(this.small("gg-hit-prev", "↑", (cx) => !this.blocked() && this.nextHit(-1, cx), t))
+          .child(this.small("gg-hit-next", "↓", (cx) => !this.blocked() && this.nextHit(1, cx), t)),
+      );
+  }
+
   copyHash(hash, cx) {
     cx.write_to_clipboard(hash);
     this.note = { ok: true, text: `Copied ${hash.slice(0, 7)}` };
@@ -907,7 +1022,7 @@ export default class GitGraph extends View {
       .child(label);
   }
 
-  // A small bordered button for the detail panels (no icon, never blocked by the branch menu).
+  // A small bordered button for the detail panels (no icon; callers gate on blocked() when the branch menu could be over it).
   small(id, label, fn, t, tone = null) {
     return div()
       .id(id)
@@ -1338,6 +1453,10 @@ export default class GitGraph extends View {
   row(row, t) {
     const c = row.c,
       picked = this.sel === c.hash;
+    // With a search, rows that do not match are dimmed (not removed, so the lanes stay intact) and
+    // the match the list last moved to is tinted.
+    const miss = Boolean(this.hitQuery) && !this.hitSet.has(c.hash),
+      current = c.hash === this.curHit;
     // No handlers in a virtual list's renderer: clicks come from on_item_click on the list.
     const merge = c.parents.length > 1;
     return h_flex()
@@ -1350,6 +1469,7 @@ export default class GitGraph extends View {
       .cursor_pointer()
       .border_l(2)
       .border_color(picked ? t.accent : alpha(t.accent, "00"))
+      .when(current && !picked, (e) => e.bg(alpha(t.accent, "26")))
       .when(picked, (e) => e.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .child(this.graph(row, t))
@@ -1368,13 +1488,19 @@ export default class GitGraph extends View {
           .flex_1()
           .min_w(0)
           .truncate()
-          .text_color(merge && !picked ? t.muted : t.foreground)
+          .text_color(miss ? t.dim : merge && !picked ? t.muted : t.foreground)
           .child(c.subject),
       )
       .when(this.wide, (e) =>
-        e
-          .child(div().w(60).flex_none().font_family(this.mono).text_size(12).text_color(t.dim).child(c.short))
-          .child(div().w(130).flex_none().truncate().text_size(13).text_color(t.muted).child(c.author)),
+        e.child(div().w(60).flex_none().font_family(this.mono).text_size(12).text_color(t.dim).child(c.short)).child(
+          div()
+            .w(130)
+            .flex_none()
+            .truncate()
+            .text_size(13)
+            .text_color(miss ? t.dim : t.muted)
+            .child(c.author),
+        ),
       )
       .child(
         div()
@@ -1396,6 +1522,7 @@ export default class GitGraph extends View {
       s = this.sync,
       graph = this.tab === "graph";
     this.mono = String(mono);
+    this.hits();
     const branchLabel = this.branch ?? (this.root ? "HEAD detached" : "—");
     return (
       v_flex()
@@ -1411,9 +1538,11 @@ export default class GitGraph extends View {
         .text_color(t.foreground)
         .text_size(14)
         .on_size_change((size, cx) => {
-          const wide = size.width > 560;
-          if (wide !== this.wide) {
+          const wide = size.width > 560,
+            roomy = size.width > 820;
+          if (wide !== this.wide || roomy !== this.roomy) {
             this.wide = wide;
+            this.roomy = roomy;
             cx.notify();
           }
         })
@@ -1464,6 +1593,7 @@ export default class GitGraph extends View {
                     this.pill(`${this.work.conflicts} conflict${this.work.conflicts === 1 ? "" : "s"}`, t.ansi1),
                   ),
                 )
+                .when(this.roomy, (e2) => e2.child(this.searchBox(t)))
                 .child(div().flex_1())
                 .child(this.button("gg-fetch", "Fetch", (cx) => this.fetch(cx), t, { disabled: off, icon: "fetch" }))
                 .child(
