@@ -1,8 +1,9 @@
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, settings, props } from "herdr";
 import { loadPrs, prPanel, prToolbar, resetPrs } from "./prs.js";
 import { initConfig, loadConfig, configPanel, configToolbar, resetConfig } from "./config.js";
+import { parseStatus, inProgress } from "./status.js";
 
 // Where the focused terminal is (same rule as the shipped Changes panel).
 function location() {
@@ -96,7 +97,20 @@ function layout(commits) {
 const CACHE = new Map();
 const TABS = ["graph", "prs", "config"];
 let LAST_TAB = "graph"; // reopening the mod returns to the tab it was closed on
-const CACHED = ["root", "on", "rows", "lanes", "more", "branch", "sync", "upstreamGone", "signature", "limit"];
+const CACHED = [
+  "root",
+  "on",
+  "rows",
+  "lanes",
+  "more",
+  "branch",
+  "sync",
+  "upstreamGone",
+  "work",
+  "inprog",
+  "signature",
+  "limit",
+];
 
 export default class GitGraph extends View {
   init(_props, cx) {
@@ -116,6 +130,13 @@ export default class GitGraph extends View {
     this.mono = "JetBrains Mono";
     this.branch = null;
     this.sync = null;
+    /** @type {{ changed: number, conflicts: number } | null} files that differ from HEAD */
+    this.work = null;
+    /** @type {string | null} merge, cherry-pick, revert or rebase in progress */
+    this.inprog = null;
+    /** @type {{ email: string, committer: string, committerEmail: string } | null} extra fields of the selected commit */
+    this.meta = null;
+    this.scroll = VirtualListScrollHandle.new();
     this.busy = null;
     this.note = null;
     this.armed = false;
@@ -185,6 +206,8 @@ export default class GitGraph extends View {
       this.more = false;
       this.branch = null;
       this.sync = null;
+      this.work = null;
+      this.inprog = null;
       this.menu = false;
       this.note = null;
       this.armed = false;
@@ -212,12 +235,22 @@ export default class GitGraph extends View {
         }
         const root = top.stdout.trim(),
           git = (args) => exec("git", [...READ, ...args], { cwd: root, on });
-        const [refs, head, sym, ab] = await Promise.all([
+        const [refs, head, sym, ab, st, prog] = await Promise.all([
           git(["for-each-ref", "--format=%(objectname) %(refname)"]),
           git(["rev-parse", "HEAD"]),
           git(["symbolic-ref", "--short", "-q", "HEAD"]),
           git(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]),
+          // Like the probe below, a failed status only hides the pill, never the graph.
+          git(["status", "--porcelain=v2", "-z", "--no-renames"]).catch(() => ({ code: 1, stdout: "", stderr: "" })),
+          // A failure here only hides the banner; it never stops the graph from loading.
+          inProgress(git, root, on).catch(() => null),
         ]);
+        if (this.ctx() !== context) return;
+        const work = st.code === 0 ? parseStatus(st.stdout) : null;
+        if (work?.changed !== this.work?.changed || work?.conflicts !== this.work?.conflicts || prog !== this.inprog)
+          changed = true;
+        this.work = work;
+        this.inprog = prog;
         const counts = ab.code === 0 ? ab.stdout.trim().split(/\s+/).map(Number) : null;
         const signature = `${refs.stdout}|${head.stdout}|${sym.stdout}|${counts}|${this.limit}`;
         const branch = sym.code === 0 ? sym.stdout.trim() : null;
@@ -607,6 +640,7 @@ export default class GitGraph extends View {
   clearSel() {
     this.sel = null;
     this.detail = null;
+    this.meta = null;
     this.files = [];
     this.openFile = null;
     this.setDiff([]);
@@ -629,13 +663,24 @@ export default class GitGraph extends View {
       try {
         // -m --first-parent: a merge shows what it brought in against its first parent.
         const [info, stat, names] = await Promise.all([
-          git(["show", "-s", "--no-color", "--date=format:%Y-%m-%d %H:%M", "--format=%an%n%ad%n%n%B", hash]),
+          git([
+            "show",
+            "-s",
+            "--no-color",
+            "--date=format:%Y-%m-%d %H:%M",
+            "--format=%an%x1f%ae%x1f%cn%x1f%ce%n%ad%n%n%B",
+            hash,
+          ]),
           git(["show", "--format=", "--numstat", "-z", "--no-renames", "-m", "--first-parent", hash]),
           git(["show", "--format=", "--name-status", "-z", "--no-renames", "-m", "--first-parent", hash]),
         ]);
         if (!same()) return;
         if (info.code !== 0) throw new Error(info.stderr);
-        this.detail = info.stdout.replace(/\n+$/, "").split("\n").slice(0, 60);
+        // First line: author and committer fields; the rest is [date, "", message...].
+        const [people, ...rest] = info.stdout.replace(/\n+$/, "").split("\n").slice(0, 60);
+        const [author, email = "", committer = "", committerEmail = ""] = people.split("\x1f");
+        this.meta = { email, committer, committerEmail };
+        this.detail = [author, ...rest];
         const counts = {};
         for (const entry of stat.stdout.split("\0")) {
           const [a, d, ...parts] = entry.split("\t");
@@ -653,6 +698,30 @@ export default class GitGraph extends View {
       cx.notify();
     });
     cx.notify();
+  }
+
+  copyHash(hash, cx) {
+    cx.write_to_clipboard(hash);
+    this.note = { ok: true, text: `Copied ${hash.slice(0, 7)}` };
+    cx.timer.after(3000, (cx) => {
+      if (this.note?.ok && this.note.text.startsWith("Copied ")) {
+        this.note = null;
+        cx.notify();
+      }
+    });
+    cx.notify();
+  }
+
+  // Selects a commit that is already in the loaded graph and scrolls its row to the middle.
+  jumpTo(hash, cx) {
+    const at = this.rows.findIndex((r) => r.c.hash === hash);
+    if (at < 0) {
+      this.note = { ok: false, text: `${hash.slice(0, 7)} is not in the loaded graph. Load more commits to reach it.` };
+      cx.notify();
+      return;
+    }
+    if (this.sel !== hash) this.select(hash, cx);
+    this.scroll.scroll_to_item(at, "center");
   }
 
   pickFile(path, cx) {
@@ -958,6 +1027,12 @@ export default class GitGraph extends View {
     const loaded = this.detail?.length >= 2;
     const lines = loaded ? this.detail.slice(3) : [];
     while (lines.length && !lines[0].trim()) lines.shift();
+    // Shown only when the committer differs from the author (a rebase, cherry-pick or applied patch).
+    const m = this.meta,
+      committed =
+        loaded && m && (m.committer !== this.detail[0] || m.committerEmail !== m.email)
+          ? `${m.committer}${m.committerEmail ? ` <${m.committerEmail}>` : ""}`
+          : "";
     const message = loaded
       ? [
           div()
@@ -967,7 +1042,63 @@ export default class GitGraph extends View {
             .font_semibold()
             .text_color(t.foreground)
             .child(lines[0] || "(no message)"),
-          div().flex_none().min_h(18).text_size(12).text_color(t.dim).child(`${this.detail[0]} · ${this.detail[1]}`),
+          div()
+            .flex_none()
+            .min_h(18)
+            .text_size(12)
+            .text_color(t.dim)
+            .child(`${this.detail[0]}${this.meta?.email ? ` <${this.meta.email}>` : ""} · ${this.detail[1]}`),
+          ...(committed
+            ? [div().flex_none().min_h(18).text_size(12).text_color(t.dim).child(`Committed by ${committed}`)]
+            : []),
+          h_flex()
+            .flex_none()
+            .h(30)
+            .gap(8)
+            .items_center()
+            .child(
+              div()
+                .flex_1()
+                .min_w(0)
+                .truncate()
+                .font_family(mono)
+                .text_size(12)
+                .text_color(t.muted)
+                .child(c?.hash ?? ""),
+            )
+            .child(this.small("gg-copy", "Copy", (cx) => this.copyHash(c.hash, cx), t)),
+          ...(c?.parents.length
+            ? [
+                h_flex()
+                  .flex_none()
+                  .min_h(26)
+                  .gap(8)
+                  .items_center()
+                  .child(
+                    div()
+                      .flex_none()
+                      .text_size(12)
+                      .text_color(t.dim)
+                      .child(c.parents.length > 1 ? "Parents" : "Parent"),
+                  )
+                  .children(
+                    c.parents.map((p) =>
+                      div()
+                        .id(`gg-parent-${p}`)
+                        .flex_none()
+                        .px(6)
+                        .rounded(4)
+                        .font_family(mono)
+                        .text_size(12)
+                        .text_color(t.accent)
+                        .cursor_pointer()
+                        .hover((s) => s.bg(t.hover))
+                        .on_click((_e, cx) => this.jumpTo(p, cx))
+                        .child(p.slice(0, 7)),
+                    ),
+                  ),
+              ]
+            : []),
           ...(lines.length > 1
             ? [
                 div().h(6).flex_none(),
@@ -1327,6 +1458,12 @@ export default class GitGraph extends View {
                 )
                 .when(Boolean(s?.behind), (e2) => e2.child(this.pill(`↓${s.behind}`, t.ansi3)))
                 .when(Boolean(s?.ahead), (e2) => e2.child(this.pill(`↑${s.ahead}`, t.ansi2)))
+                .when(Boolean(this.work?.changed), (e2) => e2.child(this.pill(`${this.work.changed} changed`, t.ansi3)))
+                .when(Boolean(this.work?.conflicts), (e2) =>
+                  e2.child(
+                    this.pill(`${this.work.conflicts} conflict${this.work.conflicts === 1 ? "" : "s"}`, t.ansi1),
+                  ),
+                )
                 .child(div().flex_1())
                 .child(this.button("gg-fetch", "Fetch", (cx) => this.fetch(cx), t, { disabled: off, icon: "fetch" }))
                 .child(
@@ -1390,6 +1527,36 @@ export default class GitGraph extends View {
               ),
           ),
         )
+        .when(graph && Boolean(this.inprog), (e) =>
+          e.child(
+            h_flex()
+              .id("gg-progress")
+              .min_h(30)
+              .flex_none()
+              .px(14)
+              .py(5)
+              .gap(8)
+              .items_center()
+              .border_b(1)
+              .border_color(t.border)
+              .bg(alpha(t.ansi3, "18"))
+              .text_size(13)
+              .text_color(t.ansi3)
+              .child(div().flex_none().font_semibold().child(this.inprog))
+              .child(
+                div()
+                  .flex_1()
+                  .min_w(0)
+                  .truncate()
+                  .text_color(t.muted)
+                  .child(
+                    this.work?.conflicts
+                      ? `${this.work.conflicts} file${this.work.conflicts === 1 ? "" : "s"} with conflicts. Resolve or abort it in a terminal.`
+                      : "In progress. Finish or abort it in a terminal.",
+                  ),
+              ),
+          ),
+        )
         .when(graph, (e) =>
           e.child(
             div()
@@ -1404,6 +1571,7 @@ export default class GitGraph extends View {
                   (i) => this.rows[i].c.hash,
                   (range) => this.rows.slice(range.start, range.end).map((row) => this.row(row, t)),
                 )
+                  .track_scroll(this.scroll)
                   .size_full()
                   .on_item_click((hash, cx) => {
                     if (!this.blocked()) this.select(hash, cx);
