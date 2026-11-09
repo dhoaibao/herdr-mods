@@ -35,11 +35,13 @@ export function parseStatus(text) {
 }
 
 /**
- * The operation in progress, or null. `git` runs a read-only git command in the repo.
+ * The operation in progress, or null: its label, and an id (the text of the marker file that names it,
+ * e.g. the commit being merged), so two operations of the same kind can be told apart.
+ * `git` runs a read-only git command in the repo.
  * @param {(args: string[]) => Promise<{ code: number, stdout: string }>} git
  * @param {string} root repo root, used to resolve relative `--git-path` output
  * @param {string | null} on machine the repo lives on
- * @returns {Promise<string | null>}
+ * @returns {Promise<{ label: string, id: string } | null>}
  */
 export async function inProgress(git, root, on) {
   const r = await git(["rev-parse", ...MARKERS.flatMap(([file]) => ["--git-path", file])]);
@@ -51,7 +53,7 @@ export async function inProgress(git, root, on) {
       if (!p) return null;
       // A linked worktree reports absolute paths (`/x` or `C:/x`); the main one reports them relative to the root.
       const text = await readTextFile(/^([A-Za-z]:)?[\\/]/.test(p) ? p : `${root}/${p}`, { on });
-      return text === null ? null : label;
+      return text === null ? null : { label, id: text.trim() };
     }),
   );
   return found.find(Boolean) ?? null;

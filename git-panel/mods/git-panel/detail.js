@@ -5,7 +5,7 @@ import { exec } from "herdr";
 import { READ, alpha } from "./shared.js";
 import { small, field } from "./ui.js";
 import { pickFile, setDiff, diffView } from "./diff.js";
-import { createRef, pickCommit, detachHead } from "./writes.js";
+import { createRef, pickCommit, pickKey, detachHead } from "./writes.js";
 import { toggleHistory, fileHistoryView } from "./history.js";
 
 export function clearSel(v) {
@@ -15,6 +15,7 @@ export function clearSel(v) {
   v.files = [];
   v.openFile = null;
   v.fileHist = null;
+  v.refsStash = null;
   setDiff(v, []);
   // A pending Pop, Drop, Cherry-pick or Revert belongs to the item that was open.
   if (/^(pop|drop|cherry-pick|revert):/.test(v.armed ?? "")) v.armed = null;
@@ -76,9 +77,10 @@ export function selectCommit(v, hash, cx) {
 
 export function copyHash(v, hash, cx) {
   cx.write_to_clipboard(hash);
-  v.note = { ok: true, text: `Copied ${hash.slice(0, 7)}` };
+  const mine = (v.note = { ok: true, text: `Copied ${hash.slice(0, 7)}` });
   cx.timer.after(3000, (cx) => {
-    if (v.note?.ok && v.note.text.startsWith("Copied ")) {
+    // Only this click's own note: a later Copy has its own timer, and any other note must stay.
+    if (v.note === mine) {
       v.note = null;
       cx.notify();
     }
@@ -108,7 +110,7 @@ function detailHead(v, t, mono, c) {
   const btn = (id, label, fn) => small(v, id, label, fn, t);
   const history = v.tab === "graph" && Boolean(c);
   const pickBtn = (id, kind, label) => {
-    const armed = v.armed === `${kind}:${c?.hash}`;
+    const armed = v.armed === pickKey(kind, c, v.branch);
     return small(
       v,
       id,

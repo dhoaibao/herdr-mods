@@ -132,6 +132,8 @@ export function resetRefs(v) {
   v.refsSig = null;
   /** @type {string | null} the branch open under Branches (its rename and delete bar) */
   v.refsBranch = null;
+  /** @type {string | null} the stash entry (`stash@{n}`) open under Stashes; two entries can hold the same commit */
+  v.refsStash = null;
 }
 
 export function initRefs(v) {
@@ -190,7 +192,13 @@ export function loadRefs(v, cx, force = false) {
         changed = true;
         // An open branch or stash that no longer exists would show a stale bar or diff.
         if (v.refsBranch && !v.refs.branches.some((b) => b.name === v.refsBranch)) v.refsBranch = null;
-        if (v.sel && v.tab === "refs" && !v.refs.stashes.some((s) => s.hash === v.sel)) v.clearSel();
+        if (v.sel && v.tab === "refs") {
+          // The open entry may have moved to another index (a stash was pushed or dropped): follow its commit.
+          const same = v.refs.stashes.find((s) => s.ref === v.refsStash && s.hash === v.sel);
+          const moved = same ?? v.refs.stashes.find((s) => s.hash === v.sel);
+          if (moved) v.refsStash = moved.ref;
+          else v.clearSel();
+        }
       }
     } catch (e) {
       if (v.context === context) {
@@ -217,7 +225,12 @@ function stashChanges(v, cx) {
   if (v.work?.changed === 0) return v.refuse("Nothing to stash: the working tree is clean", cx);
   const msg = v.stashMsg.value().trim();
   v.op("Stash changes", ["stash", "push", "--include-untracked", ...(msg ? ["-m", msg] : [])], cx, "git", {
-    done: () => v.stashMsg.set_value(""),
+    done: (r) => {
+      // Git exits 0 when it found nothing it can stash (e.g. only an unstashable submodule change).
+      if (/No local changes to save/.test(`${r.stdout}\n${r.stderr}`))
+        v.note = { ok: false, text: "Nothing was stashed: git found no local changes to save" };
+      else v.stashMsg.set_value("");
+    },
   });
 }
 
@@ -230,6 +243,10 @@ function applyStash(v, s, cx) {
   v.op(`Apply ${s.ref}`, ["stash", "apply", s.hash], cx);
 }
 
+// The two-click key of Pop and Drop names the entry and its commit, so arming one never arms another
+// (two entries can hold the same commit).
+const stashKey = (verb, s) => `${verb}:${s.ref}:${s.hash}`;
+
 // Pop and Drop remove a stash entry: two clicks, and only while that entry is still the stash that was
 // clicked (its index can shift when another stash is pushed or dropped). The success note stays until
 // dismissed and carries `git stash store <hash>`, which puts the entry back.
@@ -237,7 +254,7 @@ function removeStash(v, s, cx, verb) {
   const block = v.writeBlock();
   if (block) return v.refuse(block, cx);
   if (!HASH.test(s.hash) || !STASH_REF.test(s.ref)) return;
-  if (!v.confirm(`${verb}:${s.hash}`, cx)) return;
+  if (!v.confirm(stashKey(verb, s), cx)) return;
   v.op(`${verb === "pop" ? "Pop" : "Drop"} ${s.ref}`, ["stash", verb, s.ref], cx, "git", {
     check: async (run) => {
       const r = await run(["rev-parse", "--verify", "--quiet", s.ref]);
@@ -415,7 +432,7 @@ function tagRow(v, g, t, mono) {
 }
 
 function stashRow(v, s, t, mono) {
-  const picked = v.sel === s.hash;
+  const picked = v.sel === s.hash && v.refsStash === s.ref;
   return rowBase()
     .cursor_pointer()
     .border_l(2)
@@ -441,8 +458,8 @@ const RENDER = { branches: branchRow, tags: tagRow, stashes: stashRow, reflog: r
 
 // Actions on the open stash, between the list and its diff.
 function stashBar(v, t, mono, s) {
-  const pop = v.armed === `pop:${s.hash}`,
-    drop = v.armed === `drop:${s.hash}`;
+  const pop = v.armed === stashKey("pop", s),
+    drop = v.armed === stashKey("drop", s);
   const guarded = (fn) => (cx) => {
     if (!v.blocked()) fn(cx);
   };
@@ -535,7 +552,7 @@ export function refsPanel(v, t, mono) {
     items = v.refs[section];
   const empty =
     v.refsError ?? (!v.root ? "Not a git repository" : v.refsLoading && !items.length ? "Loading…" : EMPTY[section]);
-  const open = section === "stashes" && v.sel ? items.find((s) => s.hash === v.sel) : null;
+  const open = section === "stashes" && v.sel ? items.find((s) => s.ref === v.refsStash && s.hash === v.sel) : null;
   const openBranch = section === "branches" && v.refsBranch ? items.find((b) => b.name === v.refsBranch) : null;
   // Two stash entries can hold the same commit (`git stash store`), so a stash is keyed by its entry, `stash@{n}`.
   // A branch is keyed by its (unique) name.
@@ -557,7 +574,16 @@ export function refsPanel(v, t, mono) {
           section === "stashes"
             ? list.on_item_click((ref, cx) => {
                 const hash = items.find((s) => s.ref === ref)?.hash;
-                if (hash && !v.blocked()) v.select(hash, cx);
+                if (!hash || v.blocked()) return;
+                // Another entry that holds the open commit: move to it instead of closing the panel.
+                if (v.sel === hash && v.refsStash !== ref) {
+                  v.refsStash = ref;
+                  if (v.armed && /^(pop|drop):/.test(v.armed)) v.armed = null;
+                  cx.notify();
+                  return;
+                }
+                v.select(hash, cx);
+                v.refsStash = v.sel === hash ? ref : null;
               })
             : section === "branches"
               ? list.on_item_click((name, cx) => {

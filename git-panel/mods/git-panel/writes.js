@@ -43,10 +43,16 @@ export function createRef(v, kind, cx) {
   });
 }
 
+// The two-click key of a cherry-pick or revert names the commit and the branch it lands on, so a
+// click armed on one branch never fires after HEAD moved to another.
+export const pickKey = (kind, c, branch) => `${kind}:${c?.hash}:${branch}`;
+
 // Cherry-pick or revert the selected commit onto the current branch. Two clicks, because it creates a
-// commit; the tracked files must be clean (checked right before it runs), a merge commit is refused
-// (git needs -m for it), and a detached HEAD is refused (the new commit would be easy to lose). A
-// conflict leaves the operation in progress: the banner offers Abort, and finishing is left to a terminal.
+// commit; the tracked files must be clean and the commit must make sense for HEAD (both checked right
+// before it runs: a revert needs the commit in HEAD's history, a cherry-pick needs it outside), a merge
+// commit is refused (git needs -m for it), and a detached HEAD is refused (the new commit would be easy
+// to lose). A conflict leaves the operation in progress: the banner offers Abort, and finishing is left
+// to a terminal.
 export function pickCommit(v, kind, cx) {
   const c = writeTarget(v, cx);
   if (!c) return;
@@ -58,7 +64,7 @@ export function pickCommit(v, kind, cx) {
       cx,
     );
   if (!v.branch) return refuse(v, "Detached HEAD: switch to a branch first", cx);
-  if (!confirmAction(v, `${kind}:${c.hash}`, cx)) return;
+  if (!confirmAction(v, pickKey(kind, c, v.branch), cx)) return;
   op(
     v,
     `${revert ? "Revert" : "Cherry-pick"} ${c.short}`,
@@ -68,27 +74,41 @@ export function pickCommit(v, kind, cx) {
     {
       check: async (run) => {
         const r = await run(["status", "--porcelain", "--untracked-files=no"]);
-        return r.code === 0 && r.stdout.trim() === ""
-          ? null
-          : "Tracked files have uncommitted changes: commit or stash them first";
+        if (!(r.code === 0 && r.stdout.trim() === ""))
+          return "Tracked files have uncommitted changes: commit or stash them first";
+        // Exit 0: the commit is in HEAD's history; 1: it is not; anything else: git could not tell.
+        const anc = await run(["merge-base", "--is-ancestor", c.hash, "HEAD"]);
+        if (anc.code !== 0 && anc.code !== 1) return "Could not compare the commit with HEAD";
+        if (revert && anc.code === 1) return `${c.short} is not in ${v.branch}'s history: there is nothing to revert`;
+        if (!revert && anc.code === 0) return `${c.short} is already in ${v.branch}'s history: nothing to cherry-pick`;
+        return null;
       },
       ok: `${revert ? "Reverted" : "Cherry-picked"} ${c.short} onto ${v.branch}`,
     },
   );
 }
 
+// The two-click key of Abort names the operation and its id (see status.js), so it never fires on a
+// different operation of the same kind that started after the first click.
+export const abortKey = (v) => `abort:${v.inprog}:${v.inprogId}`;
+
 // Abort the merge, rebase, cherry-pick or revert in progress (`<op> --abort`). Two clicks, because it
-// discards the work done on that operation so far, and only while that operation is still the one in
-// progress (re-read right before it runs). This is the one write that is allowed while `inprog` is set.
+// discards the work done on that operation so far, and only while that very operation is still the one
+// in progress (kind and id, re-read right before it runs). This is the one write that is allowed while
+// `inprog` is set.
 export function abortOp(v, cx) {
   const kind = v.inprog,
+    id = v.inprogId,
     cmd = ABORT[kind];
   if (!cmd || v.busy || !v.root) return;
-  if (!confirmAction(v, `abort:${kind}`, cx)) return;
+  if (!confirmAction(v, abortKey(v), cx)) return;
   const root = v.root,
     on = v.on;
   op(v, `Abort ${cmd}`, [cmd, "--abort"], cx, "git", {
-    check: async (run) => ((await inProgress(run, root, on)) === kind ? null : `The ${cmd} is no longer in progress`),
+    check: async (run) => {
+      const now = await inProgress(run, root, on);
+      return now?.label === kind && now.id === id ? null : `That ${cmd} is no longer in progress`;
+    },
     ok: `Aborted the ${cmd}`,
   });
 }

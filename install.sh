@@ -108,6 +108,10 @@ main() {
     die "could not move the new copy into $DEST"
   fi
   say "Installed $MOD to $DEST"
+  # This mod was called git-graph before it was renamed. Never touched here: the user removes it.
+  if [ -e "$HOME_DIR/mods/git-graph" ] || [ -L "$HOME_DIR/mods/git-graph" ]; then
+    say "Found the old git-graph mod in $HOME_DIR/mods/git-graph (it is now $MOD). It is left as it is: delete it when you are happy with $MOD, and change \"mod.open:git-graph\" to \"mod.open:$MOD\" in $HOME_DIR/keys.json if you bound a key to it."
+  fi
 
   # 3. Add the key binding if it is free; never replace one that is in use. keys.json holds the
   #    whole keymap, so a missing file is not created (it would replace Herdr's defaults).

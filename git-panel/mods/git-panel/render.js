@@ -9,7 +9,7 @@ import { ROW, ABORT, alpha } from "./shared.js";
 import { button, emptyState, pill, small, tabButton } from "./ui.js";
 import { searchBox, hits } from "./search.js";
 import { fetchAll, pull, push } from "./ops.js";
-import { abortOp } from "./writes.js";
+import { abortOp, abortKey } from "./writes.js";
 import { openMenu, menuPanel } from "./menu.js";
 import { selectCommit, detailPanel } from "./detail.js";
 import { commitRow } from "./graph.js";
@@ -170,12 +170,12 @@ function progressBanner(v, t) {
         small(
           v,
           "gg-abort",
-          v.armed === `abort:${v.inprog}` ? `Click again to abort the ${ABORT[v.inprog]}` : `Abort ${ABORT[v.inprog]}`,
+          v.armed === abortKey(v) ? `Click again to abort the ${ABORT[v.inprog]}` : `Abort ${ABORT[v.inprog]}`,
           (cx) => {
             if (!v.blocked()) abortOp(v, cx);
           },
           t,
-          v.armed === `abort:${v.inprog}` ? t.ansi1 : null,
+          v.armed === abortKey(v) ? t.ansi1 : null,
         ),
       ),
     );

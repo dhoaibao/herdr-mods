@@ -40,9 +40,17 @@ const CACHED = [
   "upstreamGone",
   "work",
   "inprog",
+  "inprogId",
   "signature",
   "limit",
 ];
+
+// Stores the view's last good read of a folder in CACHE (the newest eight folders are kept).
+function remember(v, context) {
+  CACHE.delete(context);
+  CACHE.set(context, Object.fromEntries(CACHED.map((k) => [k, v[k]])));
+  if (CACHE.size > 8) CACHE.delete(CACHE.keys().next().value);
+}
 
 export default class GitPanel extends View {
   init(_props, cx) {
@@ -69,6 +77,8 @@ export default class GitPanel extends View {
     this.work = null;
     /** @type {string | null} merge, cherry-pick, revert or rebase in progress */
     this.inprog = null;
+    /** @type {string} identifies the operation in `inprog` (see status.js), part of the Abort key */
+    this.inprogId = "";
     /** @type {{ email: string, committer: string, committerEmail: string } | null} extra fields of the selected commit */
     this.meta = null;
     this.scroll = VirtualListScrollHandle.new();
@@ -114,7 +124,11 @@ export default class GitPanel extends View {
     this.hitSet = new Set();
     this.searchInput = InputState.new({ placeholder: "Search commits" });
     this.searchInput.on("change", (_e, cx) => {
-      this.search = this.searchInput.value().trim().toLowerCase();
+      const search = this.searchInput.value().trim().toLowerCase();
+      // A trailing space (or any edit that leaves the text as it was) must not throw away the match
+      // the user stepped to.
+      if (search === this.search) return;
+      this.search = search;
       this.curHit = null;
       hits(this);
       if (this.hitList.length) goHit(this, 0, cx);
@@ -176,6 +190,7 @@ export default class GitPanel extends View {
       this.sync = null;
       this.work = null;
       this.inprog = null;
+      this.inprogId = "";
       this.menu = false;
       this.note = null;
       this.armed = null;
@@ -204,7 +219,7 @@ export default class GitPanel extends View {
         }
         const root = top.stdout.trim(),
           git = (args) => exec("git", [...READ, ...args], { cwd: root, on });
-        const [refs, head, sym, ab, st, prog] = await Promise.all([
+        const [refs, head, sym, ab, st, info] = await Promise.all([
           git(["for-each-ref", "--format=%(objectname) %(refname)"]),
           git(["rev-parse", "HEAD"]),
           git(["symbolic-ref", "--short", "-q", "HEAD"]),
@@ -216,13 +231,17 @@ export default class GitPanel extends View {
         ]);
         if (this.ctx() !== context) return;
         const work = st.code === 0 ? parseStatus(st.stdout) : null;
-        if (work?.changed !== this.work?.changed || work?.conflicts !== this.work?.conflicts || prog !== this.inprog)
+        const prog = info?.label ?? null,
+          progId = info?.id ?? "";
+        const progChanged = prog !== this.inprog || progId !== this.inprogId;
+        if (work?.changed !== this.work?.changed || work?.conflicts !== this.work?.conflicts || progChanged)
           changed = true;
         this.work = work;
         // An armed Abort belongs to the operation the banner showed; when it ends or another one
-        // starts, the arm goes with it.
-        if (prog !== this.inprog && this.armed?.startsWith("abort:")) this.armed = null;
+        // starts (even of the same kind), the arm goes with it.
+        if (progChanged && this.armed?.startsWith("abort:")) this.armed = null;
         this.inprog = prog;
+        this.inprogId = progId;
         const counts = ab.code === 0 ? ab.stdout.trim().split(/\s+/).map(Number) : null;
         const signature = `${refs.stdout}|${head.stdout}|${sym.stdout}|${counts}|${this.limit}`;
         const branch = sym.code === 0 ? sym.stdout.trim() : null;
@@ -242,7 +261,13 @@ export default class GitPanel extends View {
         this.sync = counts ? { behind: counts[0], ahead: counts[1] } : null;
         this.upstreamGone = gone;
         this.watch(root, cx);
-        if (!force && signature === this.signature) return;
+        // An error from the last read is retried even when the refs did not change.
+        if (!force && signature === this.signature && !this.error) {
+          // The graph is unchanged, but the pills (changed files, ahead/behind) are not part of the
+          // signature: keep the remembered copy current, so a reopened overlay never paints old ones.
+          remember(this, context);
+          return;
+        }
         const log = await git([
           "log",
           "--branches",
@@ -256,10 +281,12 @@ export default class GitPanel extends View {
         ]);
         if (this.ctx() !== context) return;
         if (log.code !== 0) {
+          const error = log.stderr.trim() || "No commits yet";
+          // The same failure again (it is retried on every refresh) is not worth a repaint.
+          if (error !== this.error || this.rows.length) changed = true;
           this.rows = [];
-          this.error = log.stderr.trim() || "No commits yet";
+          this.error = error;
           this.signature = signature;
-          changed = true;
           return;
         }
         const commits = parseLog(log.stdout);
@@ -270,9 +297,7 @@ export default class GitPanel extends View {
         this.error = null;
         this.signature = signature;
         changed = true;
-        CACHE.delete(context);
-        CACHE.set(context, Object.fromEntries(CACHED.map((k) => [k, this[k]])));
-        if (CACHE.size > 8) CACHE.delete(CACHE.keys().next().value);
+        remember(this, context);
         // On the Refs tab the open commit is a stash, which the graph log never lists.
         if (this.sel && this.tab !== "refs" && !commits.some((c) => c.hash === this.sel)) this.clearSel();
       } catch (e) {

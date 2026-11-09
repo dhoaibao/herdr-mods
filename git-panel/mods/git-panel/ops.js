@@ -6,7 +6,8 @@ import { READ, ABORT } from "./shared.js";
 // Runs one git command the user asked for (fetch, pull, push, switch, and the guarded writes of
 // ADR-007). One at a time; the outcome shows in the note bar, and the graph reloads afterwards.
 // extra.check(run) is a read-only precondition run first (`run(args)` is a READ git call) that
-// returns a refusal text or null; extra.ok replaces the success text; extra.done runs on success;
+// returns a refusal text or null; extra.ok replaces the success text; extra.done(result) runs on
+// success and may replace the note;
 // extra.keep leaves the success note up until it is clicked away (it carries a recovery command).
 export function op(v, label, args, cx, cmd = "git", extra = {}) {
   if (v.busy || !v.root) return;
@@ -37,14 +38,15 @@ export function op(v, label, args, cx, cmd = "git", extra = {}) {
           ? (extra.ok ?? `${label}: done`)
           : out.split("\n").slice(-4).join("\n") || `${label} failed (exit ${r.code})`,
       };
-      if (ok) extra.done?.();
+      if (ok) extra.done?.(r);
     } catch (e) {
       v.note = { ok: false, text: `${label} failed: ${e}` };
     } finally {
       v.busy = null;
       v.signature = null;
       const mine = v.note;
-      if (ok && !extra.keep)
+      // Only a success note times out: `done` may have swapped in a refusal, which stays until replaced.
+      if (ok && !extra.keep && v.note?.ok)
         cx.timer.after(5000, (cx) => {
           // Only this operation's own note: a later one (a kept recovery note) must stay.
           if (v.note === mine) {

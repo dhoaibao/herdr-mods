@@ -20,6 +20,8 @@ export function pickFile(v, path, cx) {
         "git",
         [
           ...READ,
+          // A file name is a name, never `:(magic)` or a glob.
+          "--literal-pathspecs",
           "show",
           "--format=",
           "--no-color",
