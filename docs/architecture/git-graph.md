@@ -1,0 +1,38 @@
+# git-graph architecture
+
+## Scope
+
+How the `git-graph` mod (`git-graph/mods/git-graph/`) is built today: a Herdr desktop-app overlay with a commit graph tab and a GitHub pull-request tab. What it shows and how it behaves is in [`git-graph/RECIPE.md`](../../git-graph/RECIPE.md); this page covers structure and data flow.
+
+## Components
+
+| Part | Where | Role |
+| --- | --- | --- |
+| `GitGraph` view | `main.js` | The one `View` subclass Herdr instantiates. Holds all state, runs git, renders both tabs. |
+| `location()`, `parseLog()`, `layout()` | `main.js` | Pure helpers: where the focused terminal is; split `git log` output into commits; assign each commit a lane and the joins/branches per row. |
+| PR tab | `prs.js` | Functions that take the view as `v` and keep their state on it under `pr*` names (loading, selection, checkout, the toolbar and the panel); see its exports. |
+| Icons | `*.svg` | `branch`, `fetch`, `pull`, `push`, `more`; drawn in the button text color. |
+| Placement | `mod.json` | Overlay, 1200 x 900. |
+| Key | `git-graph/keys.json` | `ctrl-shift-g` -> `mod.open:git-graph`. |
+
+External surface (all from Herdr's built-in modules, typed by the generated `gpui-kit.d.ts`): `gpui-kit` (`View`, `div`, `svg`), `gpui-base` (layout helpers, `Input`, `v_virtual_list`, `TextView`), `herdr` (`spaces`, `panes`, `focused`, `exec`, `watchFolder`, `theme`, `settings`, `props`).
+
+## Flow
+
+1. **Open.** `init()` reads `props`, picks the tab (prop, else the tab used last: `LAST_TAB`), and restores the last graph read for the same folder from the module-level `CACHE`, so the first paint is instant. It then starts a 5 s timer that calls `refresh()`.
+2. **Where.** `where()` is `props.folder` when given, otherwise the focused pane's cwd (`location()`, also resolving a remote machine). `ctx()` is that value as a string; a change of context resets branch, rows and selection.
+3. **Refresh.** `refresh()` finds the repo root once (`rev-parse --show-toplevel`), then reads `for-each-ref`, `rev-parse HEAD`, `symbolic-ref` and `rev-list --left-right --count @{upstream}...HEAD`; with no upstream it also reads `config --get branch.<name>.merge` to tell "never had one" from "deleted on the remote". `branch`, `sync` and `upstreamGone` are assigned together, after the `config --get` read and before the graph read, so Push never sees a mixed state. The graph itself (`git log`, 400 per page) is re-read only when the signature of refs, HEAD, branch, counts and limit changed. A `watchFolder` loop triggers extra refreshes for local repos.
+4. **Render.** `render()` builds the tab row, the controls row, the note bar, the body and the detail panel. Lists use `v_virtual_list` with handlers on the list (`on_item_click`), never inside a row renderer. Rows get a lane column from `layout()` output.
+5. **Act.** Fetch, Pull, Push, branch switch/create and PR checkout all go through `op()`: one operation at a time, `exec(cmd, argv, { cwd: root })` with no shell, the result shown as text in the note bar, then a forced `refresh()`.
+6. **Inspect.** Selecting a commit runs `git show` (message, `--numstat`, `--name-status`, `-m --first-parent`); a file click runs `git show` for that path and `setDiff()` builds the rows, `markWords()` the intra-line highlight. The PR tab does the same with `gh pr view` and `gh pr diff`, parsed by `splitDiff()`.
+
+## Ownership and boundaries
+
+- The view owns all state; helper functions in `prs.js` mutate it through `v`. Nothing outlives the overlay except `CACHE` and `LAST_TAB`.
+- Read-only git is run with `--no-optional-locks` and `core.fsmonitor=false` so the mod's own reads never trigger its folder watch.
+- Writes to git are limited to `fetch --all --prune`, `pull --ff-only`, `push`, `switch`; writes through `gh` to `pr checkout` (a local branch switch). The mod never closes, merges, reviews or creates a PR. See the ADRs below.
+- The repo copy is the source for sharing; the running app loads `~/.config/herdr-app/mods/git-graph/`. They are kept in sync by hand ([runbook](../runbooks/sync-live-copy.md)).
+
+## Related ADRs
+
+- [ADR-001](../decisions/ADR-001-keep-github-access-read-only.md), [ADR-002](../decisions/ADR-002-report-status-as-plain-text.md), [ADR-003](../decisions/ADR-003-guard-push.md).
