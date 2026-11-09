@@ -23,7 +23,7 @@ Source repo for Herdr desktop-app mods, one folder per mod, laid out like a Herd
 
 ### Constraints
 
-- Mods are unsandboxed JS that run `git` and `gh`. The mod never forces a push and never creates, merges, reviews or closes PRs on GitHub (PR "Close" only dismisses the local detail panel); keep it that way unless the user asks. Keep the Security section of `README.md` in step with every `git`/`gh` subcommand the code runs.
+- Mods are unsandboxed JS that run `git` and `gh`. The mod never forces a push and never creates, merges, reviews or closes PRs on GitHub, and beyond fetch, pull, push, branch switching and `gh pr checkout` its local writes are limited to the set in ADR-007 (PR "Close" only dismisses the local detail panel); keep it that way unless the user asks. Keep the Security section of `README.md` in step with every `git`/`gh` subcommand the code runs.
 - gpui-kit limits (no handlers in `v_virtual_list` renderers, no `occlude`, reuse of `cx`) are listed in `git-graph/RECIPE.md`.
 - Preview with `herdr-app shot <file.png>` on a temporary tab (`herdr-app do tab.new --mod <name> --props '{...}'`, then `tab.close`); do not alter the user's layout or keys.
 

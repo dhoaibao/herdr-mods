@@ -16,11 +16,12 @@ A repository overlay with four tabs.
 - Fetch, Pull (`--ff-only`) and Push with ahead/behind indicators. Push asks for a second click and never forces. A branch that never had an upstream is published with `push -u origin HEAD`; one whose upstream was deleted on the remote is not re-published (the mod tells you instead); otherwise it runs a plain `push`.
 - Search the loaded commits by subject, author, ref name or hash: non-matches are dimmed, `Enter` and `Shift+Enter` step through the matches.
 - Working-tree state: a count of the entries `git status` lists (an untracked folder counts once) and of conflicts beside the branch chip, and a banner while a merge, cherry-pick, revert, rebase or `git am` is in progress.
+- Guarded local writes: at a selected commit, create a branch or a tag (annotated with a message) or check it out detached; under Refs > Stashes, stash changes (untracked files included), apply a stash, or pop one (two clicks). Names are validated, nothing runs during a merge or rebase, and there is no reset, discard, force, rebase or branch deletion (a stash pop removes only that stash entry, and its success note shows how to bring it back). See [ADR-007](docs/decisions/ADR-007-allow-guarded-local-writes.md).
 - Commit details with the full hash (Copy), clickable parents, author and committer, changed files, and per-file diffs with intra-line highlighting.
 - Operation status is reported as plain text, including git's own error messages.
 
 **Refs**
-- Read-only lists: local branches (upstream, `↑n`/`↓n`, `gone`, and `merged` when reachable from HEAD), tags (annotated or not), stashes and the reflog (most recent 100). Click a stash to see its files and diff.
+- Lists (read-only): local branches (upstream, `↑n`/`↓n`, `gone`, and `merged` when reachable from HEAD), tags (annotated or not), stashes and the reflog (most recent 100). Click a stash to see its files and diff, and apply or pop it.
 
 **Pull requests** (requires [`gh`](https://cli.github.com))
 - Open, Merged and Closed lists with CI status, draft state, review decision, branch and author.
@@ -89,10 +90,10 @@ herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"p
 
 Herdr mods are unsandboxed JavaScript with the same access as the app. `git-graph` runs these commands in the repository you open it on:
 
-- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track` and `-c`) and read-only queries (`log`, `show`, `status --porcelain=v2`, `for-each-ref` (including `--merged HEAD`), `stash list`, `reflog`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge or rebase in progress), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
+- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track`, `-c` and `--detach`), `branch <name> <hash>`, `tag` (lightweight, or `-a -m` with a message), `stash push --include-untracked`, `stash apply <hash>`, `stash pop stash@{n}` and read-only queries (`log`, `show`, `status --porcelain=v2`, `for-each-ref` (including `--merged HEAD`), `stash list`, `reflog`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge or rebase in progress, and `--verify` before a stash pop), `check-ref-format` (before a branch or tag is created), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
 - `gh`: `pr list`, `pr view`, `pr diff` (read-only, contact GitHub), `pr checkout` (may fetch from a fork and add a remote) and `pr view --web` (opens your browser).
 
-It never creates, merges, reviews or closes pull requests, and never forces a push. Review the source before installing.
+It never creates, merges, reviews or closes pull requests, never forces a push, and never runs `reset`, `clean`, `restore`, `rebase`, `branch -D` or `stash clear`. Review the source before installing.
 
 ## Development
 

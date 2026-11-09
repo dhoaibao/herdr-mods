@@ -1,6 +1,6 @@
 # git-graph expansion
 
-Status: approved (scope chosen by the user; implementation not started)
+Status: in progress (P1-P3 implemented and committed; P4 implemented, P5-P6 not started)
 
 ## Goal
 

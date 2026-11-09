@@ -1,9 +1,10 @@
 // The Refs tab of the Git Graph mod: local branches (upstream, ahead/behind, merged), tags, stashes
-// and the reflog, all read-only. A stash can be opened to see its files and diff in the commit
-// detail panel of main.js. Functions take the GitGraph view as `v` and keep their state on it under
+// and the reflog. The lists are read-only; the only writes here are the stash actions of ADR-007
+// (push, apply, pop), all run through the view's op(). A stash can be opened to see its files and
+// diff in the commit detail panel of main.js. Functions take the GitGraph view as `v` and keep their state on it under
 // the `refs*` names.
 import { div } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar, v_virtual_list } from "gpui-base";
+import { v_flex, h_flex, InputState, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
 
 const ROW = 28;
@@ -104,6 +105,7 @@ export function resetRefs(v) {
 export function initRefs(v) {
   v.refsSection = "branches";
   v.refsLoading = false;
+  v.stashMsg = InputState.new({ placeholder: "Stash message (optional)" });
   resetRefs(v);
 }
 
@@ -168,7 +170,50 @@ export function loadRefs(v, cx, force = false) {
   });
 }
 
-// Header controls while this tab shows: the four lists with their counts, and a reload.
+const HASH = /^[0-9a-f]{40,64}$/,
+  STASH_REF = /^stash@\{\d+\}$/;
+
+// `git stash push --include-untracked [-m <msg>]`: moves the changes (untracked files too) into a
+// new stash entry. Nothing is lost: Apply or Pop brings them back.
+function stashChanges(v, cx) {
+  const block = v.writeBlock();
+  if (block) return v.refuse(block, cx);
+  if (v.work?.changed === 0) return v.refuse("Nothing to stash: the working tree is clean", cx);
+  const msg = v.stashMsg.value().trim();
+  v.op("Stash changes", ["stash", "push", "--include-untracked", ...(msg ? ["-m", msg] : [])], cx, "git", {
+    done: () => v.stashMsg.set_value(""),
+  });
+}
+
+// `git stash apply <hash>`: the stash is named by its commit, so a list that shifted since it was
+// read cannot make this apply another one. The stash entry stays; git refuses to overwrite local changes.
+function applyStash(v, s, cx) {
+  const block = v.writeBlock();
+  if (block) return v.refuse(block, cx);
+  if (!HASH.test(s.hash)) return;
+  v.op(`Apply ${s.ref}`, ["stash", "apply", s.hash], cx);
+}
+
+// `git stash pop stash@{n}` needs a second click, and only runs while that entry is still the stash
+// that was clicked (its index can shift when another stash is pushed or dropped).
+function popStash(v, s, cx) {
+  const block = v.writeBlock();
+  if (block) return v.refuse(block, cx);
+  if (!HASH.test(s.hash) || !STASH_REF.test(s.ref)) return;
+  if (!v.confirm(`pop:${s.hash}`, cx)) return;
+  v.op(`Pop ${s.ref}`, ["stash", "pop", s.ref], cx, "git", {
+    check: async (run) => {
+      const r = await run(["rev-parse", "--verify", "--quiet", s.ref]);
+      return r.code === 0 && r.stdout.trim() === s.hash
+        ? null
+        : `${s.ref} is no longer the stash you picked: reload and pick it again`;
+    },
+    ok: `Popped ${s.ref}. To bring the entry back: git stash store ${s.hash}`,
+  });
+}
+
+// Header controls while this tab shows: the four lists with their counts, the stash controls under
+// Stashes, and a reload.
 export function refsToolbar(v, t) {
   return [
     ...SECTIONS.map(([id, label]) =>
@@ -181,6 +226,14 @@ export function refsToolbar(v, t) {
       ),
     ),
     div().flex_1(),
+    ...(v.refsSection === "stashes"
+      ? [
+          v.field("gg-stash-msg", v.stashMsg, t).w(220),
+          v.button("gg-stash-push", "Stash changes", (cx) => stashChanges(v, cx), t, {
+            disabled: !v.root || Boolean(v.busy) || v.work?.changed === 0,
+          }),
+        ]
+      : []),
     v.button(
       "gg-refs-reload",
       "Reload",
@@ -299,6 +352,49 @@ function reflogRow(v, r, t, mono) {
 
 const RENDER = { branches: branchRow, tags: tagRow, stashes: stashRow, reflog: reflogRow };
 
+// Actions on the open stash, between the list and its diff.
+function stashBar(v, t, mono, s) {
+  const pop = v.armed === `pop:${s.hash}`;
+  const guarded = (fn) => (cx) => {
+    if (!v.blocked()) fn(cx);
+  };
+  return h_flex()
+    .h(44)
+    .flex_none()
+    .px(14)
+    .gap(8)
+    .items_center()
+    .border_t(1)
+    .border_color(t.border)
+    .child(div().flex_none().font_family(mono).text_size(12).text_color(t.accent).child(s.ref))
+    .child(
+      div()
+        .flex_1()
+        .min_w(0)
+        .truncate()
+        .text_size(12)
+        .text_color(t.dim)
+        .child("Apply keeps the stash; Pop removes it once applied"),
+    )
+    .child(
+      v.small(
+        "gg-stash-apply",
+        "Apply",
+        guarded((cx) => applyStash(v, s, cx)),
+        t,
+      ),
+    )
+    .child(
+      v.small(
+        "gg-stash-pop",
+        pop ? "Click again to pop" : "Pop",
+        guarded((cx) => popStash(v, s, cx)),
+        t,
+        pop ? t.ansi1 : null,
+      ),
+    );
+}
+
 export function refsPanel(v, t, mono) {
   const section = v.refsSection,
     items = v.refs[section];
@@ -350,6 +446,7 @@ export function refsPanel(v, t, mono) {
           }`,
         ),
     )
+    .when(Boolean(open), (e) => e.child(stashBar(v, t, mono, open)))
     .when(Boolean(open), (e) =>
       e.child(v.detailPanel(t, mono, { hash: open.hash, short: open.short, parents: [], refs: [] })),
     );

@@ -26,6 +26,19 @@ const ROW = 28,
 const alpha = (color, a) => /** @type {`#${string}`} */ (color + a);
 const FORMAT = "%H%x1f%P%x1f%an%x1f%ar%x1f%D%x1f%s%x1e";
 
+// A branch or tag name the mod is willing to hand to git: no leading `-` or `.` (it would read as an
+// option or a hidden ref) and none of the shapes git rejects outright. `git check-ref-format` still
+// has the last word before any write (see createRef).
+function validRefName(name) {
+  return (
+    /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/.test(name) &&
+    !name.includes("..") &&
+    !name.endsWith("/") &&
+    !name.endsWith(".") &&
+    !name.endsWith(".lock")
+  );
+}
+
 function parseLog(text) {
   return text
     .split("\x1e")
@@ -151,7 +164,9 @@ export default class GitGraph extends View {
     this.scroll = VirtualListScrollHandle.new();
     this.busy = null;
     this.note = null;
-    this.armed = false;
+    /** @type {string | null} the two-click action waiting for its second click */
+    this.armed = null;
+    this.armSeq = 0;
     this.menu = false;
     this.guard = 0;
     this.branches = [];
@@ -190,6 +205,9 @@ export default class GitGraph extends View {
       else cx.notify();
     });
     this.searchInput.on("submit", (e, cx) => this.nextHit(e.shift ? -1 : 1, cx));
+    // Name and optional message for "Branch here" / "Tag here" in the commit detail panel.
+    this.refName = InputState.new({ placeholder: "Branch or tag name" });
+    this.refMsg = InputState.new({ placeholder: "Tag message (optional)" });
     const context = this.ctx(),
       hit = CACHE.get(context);
     if (hit) {
@@ -243,7 +261,7 @@ export default class GitGraph extends View {
       this.inprog = null;
       this.menu = false;
       this.note = null;
-      this.armed = false;
+      this.armed = null;
       resetPrs(this);
       resetConfig(this);
       resetRefs(this);
@@ -370,27 +388,40 @@ export default class GitGraph extends View {
     this.refresh(cx, true);
   }
 
-  // Runs one git command the user asked for (fetch, pull, push, switch). One at a time; the
-  // outcome shows in the note bar, and the graph reloads afterwards.
-  op(label, args, cx, cmd = "git") {
+  // Runs one git command the user asked for (fetch, pull, push, switch, and the guarded writes of
+  // ADR-007). One at a time; the outcome shows in the note bar, and the graph reloads afterwards.
+  // extra.check(run) is a read-only precondition run first (`run(args)` is a READ git call) that
+  // returns a refusal text or null; extra.ok replaces the success text; extra.done runs on success.
+  op(label, args, cx, cmd = "git", extra = {}) {
     if (this.busy || !this.root) return;
     this.busy = label;
     this.note = null;
-    this.armed = false;
+    this.armed = null;
     const context = this.context,
       root = this.root,
       on = this.on;
     cx.spawn(async (cx) => {
       let ok = false;
       try {
+        const refusal = extra.check
+          ? await extra.check((a) => exec("git", [...READ, ...a], { cwd: root, on, timeout: 30000 }))
+          : null;
+        if (this.context !== context) return;
+        if (refusal) {
+          this.note = { ok: false, text: refusal };
+          return;
+        }
         const r = await exec(cmd, args, { cwd: root, on, timeout: 120000 });
         if (this.context !== context) return;
         ok = r.code === 0;
         const out = `${r.stderr}\n${r.stdout}`.trim();
         this.note = {
           ok,
-          text: ok ? `${label}: done` : out.split("\n").slice(-4).join("\n") || `${label} failed (exit ${r.code})`,
+          text: ok
+            ? (extra.ok ?? `${label}: done`)
+            : out.split("\n").slice(-4).join("\n") || `${label} failed (exit ${r.code})`,
         };
+        if (ok) extra.done?.();
       } catch (e) {
         this.note = { ok: false, text: `${label} failed: ${e}` };
       } finally {
@@ -441,18 +472,40 @@ export default class GitGraph extends View {
       cx.notify();
       return;
     }
-    if (!this.armed) {
-      this.armed = true;
-      cx.timer.after(5000, (cx) => {
-        if (this.armed) {
-          this.armed = false;
-          cx.notify();
-        }
-      });
-      cx.notify();
-      return;
-    }
+    if (!this.confirm("push", cx)) return;
     this.op("Push", this.sync ? ["push"] : ["push", "-u", "origin", "HEAD"], cx);
+  }
+
+  // Two-click actions: the first click arms the action for 5 s (its button shows it) and returns
+  // false; a second click on the same action inside that window returns true.
+  confirm(key, cx) {
+    if (this.busy) return false;
+    if (this.armed === key) {
+      this.armed = null;
+      return true;
+    }
+    const seq = ++this.armSeq;
+    this.armed = key;
+    cx.timer.after(5000, (cx) => {
+      if (this.armSeq === seq && this.armed === key) {
+        this.armed = null;
+        cx.notify();
+      }
+    });
+    cx.notify();
+    return false;
+  }
+
+  // Why a guarded write must not run now, or null. A merge, rebase, cherry-pick, revert or patch in
+  // progress would be tangled up with it.
+  writeBlock() {
+    return this.inprog ? `${this.inprog}: finish or abort it in a terminal first` : null;
+  }
+
+  // Shows a refusal in the note bar instead of running anything.
+  refuse(text, cx) {
+    this.note = { ok: false, text };
+    cx.notify();
   }
 
   // Nothing under the branch menu is hit-blocked, so a click that picks a branch (or dismisses the
@@ -518,11 +571,7 @@ export default class GitGraph extends View {
   menuItems() {
     const f = this.filter.toLowerCase();
     const items = this.branches.filter((b) => !f || b.name.toLowerCase().includes(f));
-    const valid =
-      /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/.test(this.filter) &&
-      !this.filter.includes("..") &&
-      !this.filter.endsWith("/") &&
-      !this.filter.endsWith(".lock");
+    const valid = validRefName(this.filter);
     const exists = this.branches.some((b) => b.kind === "local" && b.name === this.filter);
     return this.filter && valid && !exists
       ? [{ key: `n:${this.filter}`, name: this.filter, kind: "new" }, ...items]
@@ -684,6 +733,8 @@ export default class GitGraph extends View {
     this.files = [];
     this.openFile = null;
     this.setDiff([]);
+    // A pending Pop belongs to the stash that was open.
+    if (this.armed?.startsWith("pop:")) this.armed = null;
   }
 
   select(hash, cx) {
@@ -776,6 +827,23 @@ export default class GitGraph extends View {
     this.goHit(cur < 0 ? (step > 0 ? 0 : n - 1) : (cur + step + n) % n, cx);
   }
 
+  // A bordered one-line input (the caller sets its width). The mouse-down guard keeps the click from
+  // reaching what lies behind it.
+  field(id, state, t) {
+    return div()
+      .id(id)
+      .h(28)
+      .flex_none()
+      .px(10)
+      .flex()
+      .items_center()
+      .rounded(6)
+      .border_1()
+      .border_color(t.border)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .child(Input.new(state).h_full().text_size(13).text_color(t.foreground));
+  }
+
   // The search box with its match count and step buttons.
   searchBox(t) {
     const n = this.hitList.length,
@@ -784,21 +852,7 @@ export default class GitGraph extends View {
       .flex_none()
       .gap(8)
       .items_center()
-      .child(
-        div()
-          .id("gg-search")
-          .w(200)
-          .h(28)
-          .flex_none()
-          .px(10)
-          .flex()
-          .items_center()
-          .rounded(6)
-          .border_1()
-          .border_color(t.border)
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-          .child(Input.new(this.searchInput).h_full().text_size(13).text_color(t.foreground)),
-      )
+      .child(this.field("gg-search", this.searchInput, t).w(200))
       .when(Boolean(this.search), (e) =>
         e.child(
           div()
@@ -822,6 +876,57 @@ export default class GitGraph extends View {
           .child(this.small("gg-hit-prev", "↑", (cx) => !this.blocked() && this.nextHit(-1, cx), t))
           .child(this.small("gg-hit-next", "↓", (cx) => !this.blocked() && this.nextHit(1, cx), t)),
       );
+  }
+
+  // The commit the detail panel shows, when it is a row of the graph and a write may run on it.
+  writeTarget(cx) {
+    const c = this.rows.find((r) => r.c.hash === this.sel)?.c;
+    if (!c || !/^[0-9a-f]{40,64}$/.test(c.hash)) return null;
+    const block = this.writeBlock();
+    if (block) {
+      this.refuse(block, cx);
+      return null;
+    }
+    return c;
+  }
+
+  // `git branch <name> <hash>` or `git tag [-a -m <msg>] <name> <hash>`: creates a ref and moves nothing.
+  // The name is checked here and by `git check-ref-format`; git itself refuses one that exists.
+  createRef(kind, cx) {
+    const c = this.writeTarget(cx);
+    if (!c) return;
+    const name = this.refName.value().trim(),
+      msg = this.refMsg.value().trim(),
+      tag = kind === "tag";
+    if (!validRefName(name)) {
+      this.refuse(
+        "Type a valid name first: letters, digits, . _ / - (not starting with - or ., not ending with . / or .lock)",
+        cx,
+      );
+      return;
+    }
+    const args = tag
+      ? msg
+        ? ["tag", "-a", name, "-m", msg, c.hash]
+        : ["tag", name, c.hash]
+      : ["branch", name, c.hash];
+    this.op(`${tag ? "Tag" : "Branch"} ${name}`, args, cx, "git", {
+      check: async (run) =>
+        (await run(["check-ref-format", `${tag ? "refs/tags/" : "refs/heads/"}${name}`])).code === 0
+          ? null
+          : `"${name}" is not a valid ${tag ? "tag" : "branch"} name`,
+      ok: `${tag ? "Tagged" : "Created branch"} ${name} at ${c.short}`,
+      done: () => {
+        this.refName.set_value("");
+        this.refMsg.set_value("");
+      },
+    });
+  }
+
+  // `git switch --detach <hash>`: git refuses it when local changes would be overwritten.
+  detach(cx) {
+    const c = this.writeTarget(cx);
+    if (c) this.op(`Check out ${c.short} (detached)`, ["switch", "--detach", c.hash], cx);
   }
 
   copyHash(hash, cx) {
@@ -1313,7 +1418,53 @@ export default class GitGraph extends View {
                 .when(f.del > 0, (e) => e.child(div().text_color(t.ansi1).child(`−${f.del}`))),
             ),
           );
-    return v_flex().h(340).flex_none().border_t(1).border_color(t.border).child(head).child(body);
+    // Branch, tag or detached checkout at this commit; only for a graph commit (not a stash), and the
+    // buttons ignore a click that only dismissed the branch menu.
+    const guarded = (fn) => (cx) => {
+      if (!this.blocked()) fn(cx);
+    };
+    const actions =
+      this.tab === "graph" && !this.openFile && c
+        ? h_flex()
+            .h(44)
+            .flex_none()
+            .px(12)
+            .gap(8)
+            .items_center()
+            .border_b(1)
+            .border_color(t.border)
+            .child(this.field("gg-ref-name", this.refName, t).w(170))
+            .child(this.field("gg-ref-msg", this.refMsg, t).flex_1().min_w(0))
+            .child(
+              btn(
+                "gg-branch-here",
+                "Branch here",
+                guarded((cx) => this.createRef("branch", cx)),
+              ),
+            )
+            .child(
+              btn(
+                "gg-tag-here",
+                "Tag here",
+                guarded((cx) => this.createRef("tag", cx)),
+              ),
+            )
+            .child(
+              btn(
+                "gg-detach",
+                "Check out (detached)",
+                guarded((cx) => this.detach(cx)),
+              ),
+            )
+        : null;
+    return v_flex()
+      .h(340)
+      .flex_none()
+      .border_t(1)
+      .border_color(t.border)
+      .child(head)
+      .when(Boolean(actions), (e) => e.child(actions))
+      .child(body);
   }
 
   graph(row, t) {
@@ -1615,14 +1766,14 @@ export default class GitGraph extends View {
                 .child(
                   this.button(
                     "gg-push",
-                    this.armed
+                    this.armed === "push"
                       ? `Click again to push${s?.ahead ? ` ↑${s.ahead}` : ""}`
                       : s?.ahead
                         ? `Push ↑${s.ahead}`
                         : "Push",
                     (cx) => this.push(cx),
                     t,
-                    { disabled: off || !this.branch, tone: this.armed ? t.ansi1 : null, icon: "push" },
+                    { disabled: off || !this.branch, tone: this.armed === "push" ? t.ansi1 : null, icon: "push" },
                   ),
                 ),
             )
