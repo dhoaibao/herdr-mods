@@ -493,6 +493,20 @@ export default class GitGraph extends View {
       ]);
   }
 
+  // Loading, empty and error text for a list area: centred over it instead of tucked in the corner.
+  emptyState(text, color, t) {
+    return div()
+      .absolute()
+      .inset_0()
+      .flex()
+      .items_center()
+      .justify_center()
+      .px(24)
+      .text_center()
+      .text_color(color ?? t.dim)
+      .child(text);
+  }
+
   branchRow(b, t) {
     const current = b.kind === "local" && b.name === this.branch;
     return h_flex()
@@ -918,6 +932,17 @@ export default class GitGraph extends View {
             }),
           ),
       );
+    // detail is [author, date, "", subject, ...body]: author and date share one muted line and the
+    // subject is set apart from the body. Loading and error text (one line) is shown as is.
+    /** @type {{ text: string, tone?: any, gap?: boolean, bold?: boolean }[]} */
+    const message =
+      this.detail?.length >= 2
+        ? [
+            { text: `${this.detail[0]} · ${this.detail[1]}`, tone: t.muted },
+            { text: "", gap: true },
+            ...this.detail.slice(3).map((text, i) => ({ text, tone: t.foreground, bold: i === 0 })),
+          ]
+        : [{ text: this.detail?.[0] ?? "Loading…", tone: t.muted }];
     const body = this.openFile
       ? this.diffView(t, mono)
       : v_flex()
@@ -930,11 +955,14 @@ export default class GitGraph extends View {
           .font_family(mono)
           .text_size(13)
           .children(
-            (this.detail ?? ["Loading…"]).map((l, i) =>
-              div()
-                .min_h(18)
-                .text_color(i < 2 ? t.muted : t.foreground)
-                .child(l || " "),
+            message.map((l) =>
+              l.gap
+                ? div().h(6).flex_none()
+                : div()
+                    .min_h(18)
+                    .text_color(l.tone)
+                    .when(l.bold, (e) => e.font_semibold())
+                    .child(l.text || " "),
             ),
           )
           .child(div().h(8).flex_none())
@@ -1088,6 +1116,15 @@ export default class GitGraph extends View {
       .hover((s) => s.bg(t.hover))
       .child(this.graph(row, t))
       .children(c.refs.slice(0, 3).map((r) => this.chip(r, t)))
+      .when(c.refs.length > 3, (e) =>
+        e.child(
+          div()
+            .flex_none()
+            .text_size(12)
+            .text_color(t.dim)
+            .child(`+${c.refs.length - 3}`),
+        ),
+      )
       .child(div().flex_1().min_w(0).truncate().child(c.subject))
       .when(this.wide, (e) =>
         e.child(div().w(130).flex_none().truncate().text_size(13).text_color(t.muted).child(c.author)),
@@ -1249,14 +1286,7 @@ export default class GitGraph extends View {
               )
               .child(Scrollbar.vertical("gg-list").viewport_from_layout().absolute().inset_0())
               .when(!this.rows.length, (e2) =>
-                e2.child(
-                  div()
-                    .absolute()
-                    .top(8)
-                    .px(14)
-                    .text_color(t.dim)
-                    .child(this.error || (this.loading ? "Loading history…" : "No commits")),
-                ),
+                e2.child(this.emptyState(this.error || (this.loading ? "Loading history…" : "No commits"), t.dim, t)),
               ),
           ),
         )

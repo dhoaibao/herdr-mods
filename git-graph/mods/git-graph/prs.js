@@ -406,7 +406,12 @@ function infoColumn(v, d, t, mono) {
                 .bg(ciTone(t, c.state === "skip" ? null : c.state)),
             )
             .child(div().flex_1().min_w(0).truncate().child(c.name))
-            .child(div().flex_none().text_color(t.dim).child(c.state)),
+            .child(
+              div()
+                .flex_none()
+                .text_color(c.state === "fail" || c.state === "pending" ? ciTone(t, c.state) : t.dim)
+                .child(c.state),
+            ),
         ),
       ),
     )
@@ -595,16 +600,7 @@ export function prPanel(v, t, mono) {
             }),
         )
         .child(Scrollbar.vertical("gg-prs").viewport_from_layout().absolute().inset_0())
-        .when(!v.prs.length, (e) =>
-          e.child(
-            div()
-              .absolute()
-              .top(8)
-              .px(14)
-              .text_color(v.prError ? t.ansi1 : t.dim)
-              .child(empty),
-          ),
-        ),
+        .when(!v.prs.length, (e) => e.child(v.emptyState(empty, v.prError ? t.ansi1 : t.dim, t))),
     )
     .when(v.prSel !== null, (e) => e.child(detailPanel(v, t, mono)));
 }

@@ -330,16 +330,7 @@ export function configPanel(v, t, mono) {
           ).size_full(),
         )
         .child(Scrollbar.vertical("gg-cfg").viewport_from_layout().absolute().inset_0())
-        .when(!rows.length, (e) =>
-          e.child(
-            div()
-              .absolute()
-              .top(8)
-              .px(14)
-              .text_color(v.cfgError ? t.ansi1 : t.dim)
-              .child(empty),
-          ),
-        ),
+        .when(!rows.length, (e) => e.child(v.emptyState(empty, v.cfgError ? t.ansi1 : t.dim, t))),
     )
     .child(
       h_flex()
