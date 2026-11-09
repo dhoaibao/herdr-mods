@@ -1,7 +1,7 @@
-// The Pull requests tab of the Git Graph mod. Everything here is read from GitHub through the
-// `gh` CLI (list, view, diff); the only changes are `gh pr checkout` (a local branch switch) and
-// opening the PR in the browser. Functions take the GitGraph view as `v` and keep their state on
-// it under the `pr*` names.
+// The Pull requests tab of the Git Graph mod, and the chip for the current branch's pull request on
+// the Graph tab. Everything here is read from GitHub through the `gh` CLI (list, view, diff); the
+// only changes are `gh pr checkout` (a local branch switch) and opening the PR in the browser.
+// Functions take the GitGraph view as `v` and keep their state on it under the `pr*` names.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, TextView, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
@@ -9,7 +9,9 @@ import { exec } from "herdr";
 const LIST_FIELDS =
   "number,title,author,headRefName,baseRefName,isDraft,state,updatedAt,reviewDecision,statusCheckRollup,url";
 const VIEW_FIELDS =
-  "number,title,body,author,reviews,statusCheckRollup,files,url,headRefName,baseRefName,state,isDraft,reviewDecision,additions,deletions,changedFiles";
+  "number,title,body,author,reviews,statusCheckRollup,files,url,headRefName,baseRefName,state,isDraft,reviewDecision,additions,deletions,changedFiles,mergeable,mergeStateStatus,labels,reviewRequests";
+// What the Graph tab's chip needs about the current branch's pull request.
+const CHIP_FIELDS = "number,state,isDraft,reviewDecision,statusCheckRollup";
 const ROW = 32,
   FRESH_MS = 60000;
 export const PR_STATES = [
@@ -80,6 +82,10 @@ export function resetPrs(v) {
   v.prError = null;
   v.prKey = null;
   v.prAt = 0;
+  v.prHead = null;
+  v.prHeadKey = null;
+  v.prHeadAt = 0;
+  v.prHeadLoading = false;
   clearPr(v);
 }
 
@@ -90,6 +96,55 @@ function clearPr(v) {
   v.prDiffs = null;
   v.prDiffsFor = null;
   v.setDiff([]);
+}
+
+// The pull request of the checked-out branch (`gh pr view` with no number), for the Graph tab's chip.
+// GitHub is only asked after the Pull requests tab was opened in this view (`v.prUsed`), as before the
+// chip existed, and never when the chip has no room (narrow layout) or the `prChip: false` prop is set.
+// Then at most one call a minute for a repo and branch; a branch without a PR, a missing or signed-out
+// `gh` or any failure just means no chip.
+export function loadCurrentPr(v, cx) {
+  if (!v.prChipOn || !v.prUsed || !v.wide || !v.root || !v.branch || v.prHeadLoading) return;
+  const context = v.context,
+    root = v.root,
+    on = v.on,
+    branch = v.branch,
+    key = `${context}|${branch}`;
+  if (v.prHeadKey === key && Date.now() - v.prHeadAt < FRESH_MS) return;
+  v.prHeadLoading = true;
+  cx.spawn(async (cx) => {
+    let changed = false;
+    try {
+      const r = await exec("gh", ["pr", "view", "--json", CHIP_FIELDS], { cwd: root, on, timeout: 30000 });
+      if (v.context !== context) return;
+      const p = r.code === 0 ? JSON.parse(r.stdout) : null;
+      const next = Number.isInteger(p?.number)
+        ? {
+            number: p.number,
+            state: String(p.state ?? ""),
+            isDraft: Boolean(p.isDraft),
+            reviewDecision: String(p.reviewDecision ?? ""),
+            ci: ciState(p.statusCheckRollup),
+            branch,
+          }
+        : null;
+      changed = JSON.stringify(next) !== JSON.stringify(v.prHead);
+      v.prHead = next;
+    } catch {
+      if (v.context === context) {
+        changed = v.prHead !== null;
+        v.prHead = null;
+      }
+    } finally {
+      // Only for the repo this read was made for: resetPrs already cleared the state of a repo switch.
+      if (v.context === context) {
+        v.prHeadLoading = false;
+        v.prHeadKey = key;
+        v.prHeadAt = Date.now();
+      }
+      if (changed) cx.notify();
+    }
+  });
 }
 
 export function setPrState(v, state, cx) {
@@ -281,6 +336,43 @@ function chip(text, color, t, max = 160) {
     .child(text);
 }
 
+// The Graph tab's chip: the current branch's PR number, state and review decision, with its CI dot.
+// A click opens that PR in the Pull requests tab.
+export function prChip(v, t) {
+  const p = v.prHead;
+  const open = p.state === "OPEN";
+  const color = p.isDraft ? t.muted : p.state === "MERGED" ? t.ansi5 : p.state === "CLOSED" ? t.ansi1 : t.ansi2;
+  const word = p.isDraft ? "Draft" : p.state === "MERGED" ? "Merged" : p.state === "CLOSED" ? "Closed" : "Open";
+  const review = open ? reviewText(p.reviewDecision) : "";
+  return h_flex()
+    .id("gg-pr-chip")
+    .flex_none()
+    .max_w(280)
+    .h(24)
+    .px(8)
+    .gap(6)
+    .items_center()
+    .rounded(12)
+    .border_1()
+    .border_color(color)
+    .text_size(12)
+    .text_color(color)
+    .cursor_pointer()
+    .hover((s) => s.bg(t.hover))
+    .on_click((_e, cx) => {
+      if (v.blocked()) return;
+      v.setTab("prs", cx);
+      if (v.prSel !== p.number) selectPr(v, p.number, cx);
+    })
+    .when(Boolean(p.ci), (e) => e.child(div().w(8).h(8).flex_none().rounded(4).bg(ciTone(t, p.ci))))
+    .child(
+      div()
+        .min_w(0)
+        .truncate()
+        .child(`PR #${p.number} ${word}${review ? ` · ${review}` : ""}`),
+    );
+}
+
 function prRow(v, p, t) {
   const decision = reviewText(p.reviewDecision);
   return h_flex()
@@ -317,6 +409,25 @@ function section(title, t) {
   return div().flex_none().pt(6).text_size(12).text_color(t.dim).font_semibold().child(title.toUpperCase());
 }
 
+// Whether an open PR can be merged, as [text, color], or null when GitHub has not worked it out
+// (`mergeable` is UNKNOWN for a moment after a push). Both fields are GitHub's own words.
+function mergeInfo(d, t) {
+  if (d.mergeable === "CONFLICTING" || d.mergeStateStatus === "DIRTY") return ["Has conflicts", t.ansi1];
+  switch (d.mergeStateStatus) {
+    case "CLEAN":
+    case "HAS_HOOKS":
+      return ["Ready to merge", t.ansi2];
+    case "BEHIND":
+      return ["Behind its base branch", t.ansi3];
+    case "BLOCKED":
+      return ["Blocked: checks or reviews required", t.ansi3];
+    case "UNSTABLE":
+      return ["Merge allowed, checks failing", t.ansi3];
+    default:
+      return null;
+  }
+}
+
 function stateChip(d, t) {
   const merged = d.state === "MERGED",
     closed = d.state === "CLOSED";
@@ -339,6 +450,11 @@ function infoColumn(v, d, t, mono) {
   const reviews = (d.reviews ?? []).filter((r) => r.state !== "COMMENTED" || r.body);
   const body = (d.body ?? "").replace(/\r/g, "").trim().slice(0, 8000);
   const decision = reviewText(d.reviewDecision);
+  const merge = d.state === "OPEN" ? mergeInfo(d, t) : null;
+  const labels = (Array.isArray(d.labels) ? d.labels : []).map((l) => String(l?.name ?? "")).filter(Boolean);
+  const requested = (Array.isArray(d.reviewRequests) ? d.reviewRequests : [])
+    .map((r) => String(r?.login ?? r?.name ?? r?.slug ?? ""))
+    .filter(Boolean);
   return v_flex()
     .id("gg-pr-info")
     .min_w(0)
@@ -388,6 +504,33 @@ function infoColumn(v, d, t, mono) {
             .child(`${d.changedFiles ?? d.files?.length ?? 0} files`),
         )
         .when(Boolean(decision), (e) => e.child(chip(decision, reviewTone(t, d.reviewDecision), t, 160))),
+    )
+    .when(Boolean(merge) || labels.length > 0, (e) =>
+      e.child(
+        h_flex()
+          .flex_none()
+          .gap(6)
+          .items_center()
+          .flex_wrap()
+          .when(Boolean(merge), (e2) => e2.child(chip(merge[0], merge[1], t, 180)))
+          .children(labels.slice(0, 8).map((name) => chip(name, t.muted, t, 140)))
+          .when(labels.length > 8, (e2) =>
+            e2.child(
+              div()
+                .text_size(12)
+                .text_color(t.dim)
+                .child(`+${labels.length - 8}`),
+            ),
+          ),
+      ),
+    )
+    .when(requested.length > 0, (e) =>
+      e.child(
+        div()
+          .flex_none()
+          .text_color(t.muted)
+          .child(`Review requested: ${requested.join(", ")}`),
+      ),
     )
     .when(checks.length > 0, (e) =>
       e.child(section("Checks", t)).children(

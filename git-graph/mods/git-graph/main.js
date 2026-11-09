@@ -1,10 +1,11 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, settings, props } from "herdr";
-import { loadPrs, prPanel, prToolbar, resetPrs } from "./prs.js";
+import { loadPrs, loadCurrentPr, prChip, prPanel, prToolbar, resetPrs } from "./prs.js";
 import { initConfig, loadConfig, configPanel, configToolbar, resetConfig } from "./config.js";
 import { initRefs, loadRefs, refsPanel, refsToolbar, resetRefs, validRefName, NAME_HELP } from "./refs.js";
 import { parseStatus, inProgress } from "./status.js";
+import { toggleHistory, fileHistoryView } from "./history.js";
 
 // Where the focused terminal is (same rule as the shipped Changes panel).
 function location() {
@@ -136,6 +137,8 @@ export default class GitGraph extends View {
     this.detail = null;
     this.files = [];
     this.openFile = null;
+    /** @type {{ path: string, rows: object[], loading: boolean, error: string | null } | null} the open file's history, in place of its diff */
+    this.fileHist = null;
     this.diff = [];
     this.diffWidth = 300;
     this.wide = true;
@@ -161,8 +164,14 @@ export default class GitGraph extends View {
     this.branches = [];
     this.filter = "";
     this.tab = TABS.includes(props()?.tab) ? props().tab : LAST_TAB;
+    // The PR chip asks GitHub only after the Pull requests tab was used in this view (see loadCurrentPr).
+    this.prUsed = this.tab === "prs";
     this.prState = ["open", "merged", "closed"].includes(props()?.state) ? props().state : "open";
     this.prLoading = false;
+    // {"prChip": false} turns the current branch's PR chip off for good (a mod.open overlay cannot pass props, which is why the chip also waits for the PR tab, see prUsed).
+    this.prChipOn = ![false, "false"].includes(props()?.prChip);
+    /** @type {{ number: number, title: string, state: string, isDraft: boolean, reviewDecision: string, ci: string | null, branch: string } | null} the current branch's PR (see prs.js) */
+    this.prHead = null;
     resetPrs(this);
     initConfig(this);
     initRefs(this);
@@ -358,6 +367,7 @@ export default class GitGraph extends View {
         if (this.tab === "prs") loadPrs(this, cx);
         if (this.tab === "config") loadConfig(this, cx);
         if (this.tab === "refs") loadRefs(this, cx);
+        if (this.tab === "graph") loadCurrentPr(this, cx);
       }
     });
   }
@@ -369,9 +379,13 @@ export default class GitGraph extends View {
     if (this.sel && (tab === "refs" || this.tab === "refs")) this.clearSel();
     this.tab = LAST_TAB = tab;
     this.menu = false;
-    if (tab === "prs") loadPrs(this, cx);
+    if (tab === "prs") {
+      this.prUsed = true;
+      loadPrs(this, cx);
+    }
     if (tab === "config") loadConfig(this, cx);
     if (tab === "refs") loadRefs(this, cx);
+    if (tab === "graph") loadCurrentPr(this, cx);
     cx.notify();
   }
 
@@ -730,6 +744,7 @@ export default class GitGraph extends View {
     this.meta = null;
     this.files = [];
     this.openFile = null;
+    this.fileHist = null;
     this.setDiff([]);
     // A pending Pop, Drop, Cherry-pick or Revert belongs to the item that was open.
     if (/^(pop|drop|cherry-pick|revert):/.test(this.armed ?? "")) this.armed = null;
@@ -998,6 +1013,7 @@ export default class GitGraph extends View {
 
   pickFile(path, cx) {
     this.openFile = path;
+    this.fileHist = null;
     this.setDiff(["Loading…"]);
     const hash = this.sel,
       context = this.context,
@@ -1263,11 +1279,21 @@ export default class GitGraph extends View {
           .child(
             btn("gg-back", "‹ Files", (cx) => {
               this.openFile = null;
+              this.fileHist = null;
               this.setDiff([]);
               cx.notify();
             }),
           )
-          .child(div().flex_1().min_w(0).truncate().font_family(mono).text_size(13).child(this.openFile)),
+          .child(div().flex_1().min_w(0).truncate().font_family(mono).text_size(13).child(this.openFile))
+          .when(this.tab === "graph", (e2) =>
+            e2.child(
+              btn(
+                "gg-hist",
+                this.fileHist ? "Diff" : "History",
+                guarded((cx) => toggleHistory(this, cx)),
+              ),
+            ),
+          ),
       )
       .when(!this.openFile, (e) =>
         e
@@ -1411,7 +1437,9 @@ export default class GitGraph extends View {
             .child(this.detail?.[0] ?? "Loading…"),
         ];
     const body = this.openFile
-      ? this.diffView(t, mono)
+      ? this.fileHist
+        ? fileHistoryView(this, t, mono)
+        : this.diffView(t, mono)
       : v_flex()
           .id("gg-detail")
           .flex_1()
@@ -1812,6 +1840,9 @@ export default class GitGraph extends View {
                   e2.child(
                     this.pill(`${this.work.conflicts} conflict${this.work.conflicts === 1 ? "" : "s"}`, t.ansi1),
                   ),
+                )
+                .when(this.wide && Boolean(this.prHead) && this.prHead.branch === this.branch, (e2) =>
+                  e2.child(prChip(this, t)),
                 )
                 .when(this.roomy, (e2) => e2.child(this.searchBox(t)))
                 .child(div().flex_1())

@@ -10,7 +10,7 @@ The Pull requests tab needs `gh`. The user chose a read-only tab: creating, revi
 
 ## Decision
 
-The tab only reads PRs (`gh pr list`, `pr view`, `pr diff`) and offers two local-effect actions: `gh pr checkout` and `gh pr view --web`. The `Close` button only dismisses the detail panel; it never runs `gh pr close`.
+The tab only reads PRs (`gh pr list`, `pr view`, `pr diff`) and offers two local-effect actions: `gh pr checkout` and `gh pr view --web`. The `Close` button only dismisses the detail panel; it never runs `gh pr close`. The Graph tab's chip for the current branch's pull request reads it the same way (`gh pr view` without a number, at most once a minute per repo and branch, and only after the Pull requests tab was opened in that view, so GitHub is still contacted only after the user chose to use it in that view (the choice carries over to every repository the view follows, as the Pull requests tab itself does); never with the `prChip: false` prop); it changes nothing on GitHub.
 
 ## Consequences
 

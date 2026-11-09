@@ -17,7 +17,8 @@ A repository overlay with four tabs.
 - Search the loaded commits by subject, author, ref name or hash: non-matches are dimmed, `Enter` and `Shift+Enter` step through the matches.
 - Working-tree state: a count of the entries `git status` lists (an untracked folder counts once) and of conflicts beside the branch chip, and a banner while a merge, cherry-pick, revert, rebase or `git am` is in progress.
 - Guarded local writes: at a selected commit, create a branch or a tag (annotated with a message) or check it out detached; under Refs > Stashes, stash changes (untracked files included), apply a stash, or pop or drop one (two clicks); under Refs > Branches, rename a branch or delete one that is merged (`-d`, two clicks); at a commit, cherry-pick or revert it onto the current branch (two clicks, clean tracked files, no merge commits); and abort a merge, rebase, cherry-pick or revert that is in progress (two clicks; it discards the work on it so far). Names are validated and nothing else runs during a merge or rebase. There is no reset, discard, force, `branch -D`, `stash clear` or continue/skip. The success note of a delete, pop or drop stays up and shows how to bring the item back. See [ADR-007](docs/decisions/ADR-007-allow-guarded-local-writes.md).
-- Commit details with the full hash (Copy), clickable parents, author and committer, changed files, and per-file diffs with intra-line highlighting.
+- Commit details with the full hash (Copy), clickable parents, author and committer, changed files, and per-file diffs with intra-line highlighting. A `History` button on a file's diff lists the commits that touched it up to the open commit (renames followed, at most 100); click one to jump to it in the graph.
+- A chip beside the branch chip shows the current branch's pull request (number, state, review decision, CI dot); click it to open that PR. It appears only after you have opened the Pull requests tab in that view, meaning the overlay, tab or pane (until then the Graph tab never contacts GitHub); from then on, for every repository that view follows, it asks GitHub through `gh` about once a minute while the Graph tab is selected and wide, and it stays hidden when there is no PR, no `gh`, or `prChip` is `false`.
 - Operation status is reported as plain text, including git's own error messages.
 
 **Refs**
@@ -25,7 +26,7 @@ A repository overlay with four tabs.
 
 **Pull requests** (requires [`gh`](https://cli.github.com))
 - Open, Merged and Closed lists with CI status, draft state, review decision, branch and author.
-- Detail panel with checks, reviews, the rendered description and changed files; click a file to see its diff.
+- Detail panel with merge state (ready, blocked, behind, conflicts), labels, requested reviewers, checks, reviews, the rendered description and changed files; click a file to see its diff.
 - Checkout (`gh pr checkout`), Open in browser, and Close (dismisses the detail panel only). Creating, reviewing, merging and closing PRs on GitHub are intentionally out of scope.
 
 **Config**
@@ -38,7 +39,7 @@ A repository overlay with four tabs.
 
 - Herdr desktop app (not the TUI)
 - `git`
-- `gh`, authenticated, for the Pull requests tab
+- `gh`, authenticated, for the Pull requests tab and the pull request chip
 
 ![git-graph preview](git-graph/preview.png)
 
@@ -85,13 +86,14 @@ herdr-app do tab.new --mod git-graph --props '{"folder":"/path/to/repo","tab":"p
 | `scope` | `all`, `local`, `global` | Initial scope filter of the Config tab |
 | `state` | `open`, `merged`, `closed` | Initial pull-request filter |
 | `pr` | number | Pull request to open in the detail panel |
+| `prChip` | `false` | Never show the current-branch pull request chip on the Graph tab, even after the Pull requests tab was used (the chip is otherwise shown once that tab has been opened, and then asks GitHub through `gh` about once a minute) |
 
 ## Security
 
 Herdr mods are unsandboxed JavaScript with the same access as the app. `git-graph` runs these commands in the repository you open it on:
 
-- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track`, `-c` and `--detach`), `branch <name> <hash>`, `tag` (lightweight, or `-a -m` with a message), `stash push --include-untracked`, `stash apply <hash>`, `stash pop stash@{n}`, `stash drop stash@{n}`, `branch -m`, `branch -d` (never `-D`), `cherry-pick <hash>`, `revert --no-edit <hash>`, `merge`/`rebase`/`cherry-pick`/`revert` with `--abort`, and read-only queries (`log`, `show`, `status --porcelain=v2`, `for-each-ref` (including `--merged HEAD`), `stash list`, `reflog`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge, rebase, cherry-pick, revert or patch in progress, including before an Abort, and `--verify` before a stash pop, drop or branch delete), `check-ref-format` (before a branch or tag is created or renamed), `status --porcelain --untracked-files=no` (before a cherry-pick or revert), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
-- `gh`: `pr list`, `pr view`, `pr diff` (read-only, contact GitHub), `pr checkout` (may fetch from a fork and add a remote) and `pr view --web` (opens your browser).
+- `git`: `fetch --all --prune` (contacts remotes and removes stale remote-tracking refs), `pull --ff-only`, `push`, `switch` (including `--track`, `-c` and `--detach`), `branch <name> <hash>`, `tag` (lightweight, or `-a -m` with a message), `stash push --include-untracked`, `stash apply <hash>`, `stash pop stash@{n}`, `stash drop stash@{n}`, `branch -m`, `branch -d` (never `-D`), `cherry-pick <hash>`, `revert --no-edit <hash>`, `merge`/`rebase`/`cherry-pick`/`revert` with `--abort`, and read-only queries (`log` (including `--follow` for a file's history), `show`, `status --porcelain=v2`, `for-each-ref` (including `--merged HEAD`), `stash list`, `reflog`, `rev-list`, `rev-parse` (including `--git-path`, to detect a merge, rebase, cherry-pick, revert or patch in progress, including before an Abort, and `--verify` before a stash pop, drop or branch delete), `check-ref-format` (before a branch or tag is created or renamed), `status --porcelain --untracked-files=no` (before a cherry-pick or revert), `symbolic-ref`, `config --get`, `config --list --show-origin --show-scope -z` for the Config tab).
+- `gh`: `pr list`, `pr view` (with a number for the detail panel; without one, about once a minute while the Graph tab is selected and wide, and only after the Pull requests tab was opened in that view, for the current branch's chip), `pr diff` (read-only, contact GitHub), `pr checkout` (may fetch from a fork and add a remote) and `pr view --web` (opens your browser).
 
 It never creates, merges, reviews or closes pull requests, never forces a push, and never runs `reset`, `clean`, `restore`, a `rebase` or `merge` of its own, `branch -D` or `stash clear`. Review the source before installing.
 

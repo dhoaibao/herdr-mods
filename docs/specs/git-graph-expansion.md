@@ -1,6 +1,6 @@
 # git-graph expansion
 
-Status: in progress (P1-P4 implemented and committed; P5 implemented; P6 not started)
+Status: implemented (P1-P5 committed; P6 implemented)
 
 ## Goal
 
@@ -22,7 +22,7 @@ Show more of the information developers need and add safe, local write actions t
 - R3 Commit search: filter input that dims non-matching loaded rows (lane layout unchanged), match count, Next.
 - R4 Refs tab: branches (`%(upstream:short)`, `%(upstream:track)`, merged marker), tags, stashes (`stash list`, `stash show` reusing the diff view), reflog (`-n 100`).
 - R5 File history from commit detail: `log --follow -n 100 -- <path>`.
-- R6 Current-branch PR chip and extra PR fields (`mergeable`, `mergeStateStatus`, `labels`, `reviewRequests`); verify field names against `gh` first.
+- R6 Current-branch PR chip (shown only after the Pull requests tab was opened in that view, because the `ctrl-shift-g` overlay cannot pass props to switch it off) and extra PR fields (`mergeable`, `mergeStateStatus`, `labels`, `reviewRequests`); verify field names against `gh` first.
 
 ### Safe writes
 
