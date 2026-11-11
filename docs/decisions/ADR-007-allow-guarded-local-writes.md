@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-09
-- Supersedes: none (extends [ADR-003](ADR-003-guard-push.md); [ADR-001](ADR-001-keep-github-access-read-only.md) still holds)
+- Supersedes: none (extends [ADR-003](ADR-003-guard-push.md); the GitHub side is covered by [ADR-009](ADR-009-allow-guarded-pull-request-writes.md), which superseded ADR-001)
 
 ## Context
 
@@ -44,7 +44,7 @@ Rules:
 - **Undo.** Every action creates something or can be undone, with one exception: Abort discards the work done on the operation so far (git goes back to the state before it started, but may not be able to rebuild uncommitted changes that existed before it began), which is why it takes two clicks and the banner says so. The success notes of `pop`, `drop` and `branch -d` stay up until clicked away or replaced by the next action's note, and carry the hash and the command that puts it back (`git stash store <hash>`, `git branch <name> <hash>`). A cherry-pick or revert is undone with `git reset` or a revert in a terminal.
 - **Reporting.** Status stays plain text in the note bar ([ADR-002](ADR-002-report-status-as-plain-text.md)); the name and message inputs are rows in the commit detail panel and the Refs toolbar, not dialogs.
 
-Never added: `reset`, `clean`, `restore` or `checkout --` (discarding changes), starting a `rebase` or `merge`, `--continue` or `--skip` of an operation, `branch -D`, `stash clear`, deleting remote branches, force push, `--no-verify`, any write to GitHub, and staging or committing (Herdr's Changes panel does that). Other local writes are not in the set above; adding one means updating this ADR and the README Security list first.
+Never added: `reset`, `clean`, `restore` or `checkout --` (discarding changes), starting a `rebase` or `merge`, `--continue` or `--skip` of an operation, `branch -D`, `stash clear`, deleting remote branches with git, force push, `--no-verify`, any write to GitHub other than the pull request actions of [ADR-009](ADR-009-allow-guarded-pull-request-writes.md), and staging or committing (Herdr's Changes panel does that). Other local writes are not in the set above; adding one means updating this ADR and the README Security list first.
 
 ## Consequences
 

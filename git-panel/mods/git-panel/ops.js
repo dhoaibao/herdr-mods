@@ -5,8 +5,9 @@ import { READ, ABORT } from "./shared.js";
 
 // Runs one git command the user asked for (fetch, pull, push, switch, and the guarded writes of
 // ADR-007). One at a time; the outcome shows in the note bar, and the graph reloads afterwards.
-// extra.check(run) is a read-only precondition run first (`run(args)` is a READ git call) that
-// returns a refusal text or null; extra.ok replaces the success text; extra.done(result) runs on
+// extra.check(run, gh) is a read-only precondition run first (`run(args)` is a READ git call,
+// `gh(args)` a read-only gh call, which prwrites.js uses before a GitHub write) that returns a
+// refusal text or null; extra.ok replaces the success text; extra.done(result, cx) runs on
 // success and may replace the note;
 // extra.keep leaves the success note up until it is clicked away (it carries a recovery command).
 export function op(v, label, args, cx, cmd = "git", extra = {}) {
@@ -21,7 +22,10 @@ export function op(v, label, args, cx, cmd = "git", extra = {}) {
     let ok = false;
     try {
       const refusal = extra.check
-        ? await extra.check((a) => exec("git", [...READ, ...a], { cwd: root, on, timeout: 30000 }))
+        ? await extra.check(
+            (a) => exec("git", [...READ, ...a], { cwd: root, on, timeout: 30000 }),
+            (a) => exec("gh", a, { cwd: root, on, timeout: 30000 }),
+          )
         : null;
       if (v.context !== context) return;
       if (refusal) {
@@ -38,7 +42,7 @@ export function op(v, label, args, cx, cmd = "git", extra = {}) {
           ? (extra.ok ?? `${label}: done`)
           : out.split("\n").slice(-4).join("\n") || `${label} failed (exit ${r.code})`,
       };
-      if (ok) extra.done?.(r);
+      if (ok) extra.done?.(r, cx);
     } catch (e) {
       v.note = { ok: false, text: `${label} failed: ${e}` };
     } finally {

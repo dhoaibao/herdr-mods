@@ -1,6 +1,6 @@
 # ADR-001: Keep GitHub access read-only
 
-- Status: Accepted
+- Status: Superseded by [ADR-009](ADR-009-allow-guarded-pull-request-writes.md)
 - Date: 2026-11-09
 - Supersedes: none
 

@@ -1,15 +1,17 @@
 // The Pull requests tab of the Git Panel mod, and the chip for the current branch's pull request on
 // the Graph tab. Everything here is read from GitHub through the `gh` CLI (list, view, diff); the
-// only changes are `gh pr checkout` (a local branch switch) and opening the PR in the browser.
+// changes are `gh pr checkout` (a local branch switch), opening the PR in the browser, and the guarded
+// merge, close, ready-for-review and delete-branch actions of prwrites.js (ADR-009).
 // Functions take the GitPanel view as `v` and keep their state on it under the `pr*` names.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, TextView, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
+import { BAR_H, hasActions, prActionBar } from "./prwrites.js";
 
 const LIST_FIELDS =
   "number,title,author,headRefName,baseRefName,isDraft,state,updatedAt,reviewDecision,statusCheckRollup,url";
 const VIEW_FIELDS =
-  "number,title,body,author,reviews,statusCheckRollup,files,url,headRefName,baseRefName,state,isDraft,reviewDecision,additions,deletions,changedFiles,mergeable,mergeStateStatus,labels,reviewRequests";
+  "number,title,body,author,reviews,statusCheckRollup,files,url,headRefName,baseRefName,state,isDraft,reviewDecision,additions,deletions,changedFiles,mergeable,mergeStateStatus,labels,reviewRequests,headRefOid,isCrossRepository";
 // What the Graph tab's chip needs about the current branch's pull request.
 const CHIP_FIELDS = "number,state,isDraft,reviewDecision,statusCheckRollup";
 const ROW = 32,
@@ -90,6 +92,7 @@ export function resetPrs(v) {
 }
 
 function clearPr(v) {
+  if (/^pr-/.test(v.armed ?? "")) v.armed = null;
   v.prSel = null;
   v.prDetail = null;
   v.prFile = null;
@@ -211,6 +214,12 @@ export function selectPr(v, number, cx) {
   }
   clearPr(v);
   v.prSel = number;
+  readPr(v, number, cx);
+  cx.notify();
+}
+
+// Reads one PR's detail into `v.prDetail` (only while it is still the selected one).
+function readPr(v, number, cx) {
   const context = v.context,
     root = v.root,
     on = v.on,
@@ -230,7 +239,15 @@ export function selectPr(v, number, cx) {
     }
     cx.notify();
   });
-  cx.notify();
+}
+
+// After a write on GitHub succeeded: drop the freshness windows so the list and the Graph chip are
+// read again now, and re-read the open detail without closing it.
+function reloadPr(v, cx) {
+  v.prKey = null;
+  v.prHeadKey = null;
+  loadPrs(v, cx, true);
+  if (v.prSel !== null) readPr(v, v.prSel, cx);
 }
 
 export function pickPrFile(v, path, cx) {
@@ -442,7 +459,7 @@ function stateChip(d, t) {
 // Left column: what the PR is (title, branches, stats), its checks and reviews, and the description.
 // Every child is flex_none: in a scrolling column a shrinkable child is squeezed to fit instead of
 // scrolling, which is what made wrapped lines overlap.
-function infoColumn(v, d, t, mono) {
+function infoColumn(v, d, t, mono, h) {
   const checks = (d.statusCheckRollup ?? []).map((c) => ({
     name: c.name ?? c.context ?? "check",
     state: checkState(c),
@@ -461,8 +478,8 @@ function infoColumn(v, d, t, mono) {
     .min_h(0)
     .overflow_y_scroll()
     .p(14)
-    .when(v.wide, (e) => e.flex_1().h(BODY_H))
-    .when(!v.wide, (e) => e.w_full().h(BODY_H / 2))
+    .when(v.wide, (e) => e.flex_1().h(h))
+    .when(!v.wide, (e) => e.w_full().h(h / 2))
     .gap(8)
     .text_size(13)
     .child(div().flex_none().font_semibold().text_size(15).child(d.title))
@@ -590,7 +607,7 @@ function infoColumn(v, d, t, mono) {
 }
 
 // Right column: the changed files; one click opens that file's diff.
-function filesColumn(v, d, t, mono) {
+function filesColumn(v, d, t, mono, h) {
   const files = d.files ?? [];
   return v_flex()
     .id("gg-pr-files")
@@ -599,11 +616,11 @@ function filesColumn(v, d, t, mono) {
     .p(10)
     .gap(1)
     .text_size(13)
-    .when(v.wide, (e) => e.w(440).h(BODY_H).flex_none().border_l(1).border_color(t.border))
+    .when(v.wide, (e) => e.w(440).h(h).flex_none().border_l(1).border_color(t.border))
     .when(!v.wide, (e) =>
       e
         .w_full()
-        .h(BODY_H / 2)
+        .h(h / 2)
         .flex_none()
         .border_t(1)
         .border_color(t.border),
@@ -637,14 +654,15 @@ const PANEL_H = 440,
   HEAD_H = 40,
   BODY_H = PANEL_H - HEAD_H - 1;
 
-function detailBody(v, d, t, mono) {
+// The body is shorter by the action bar's height when the bar shows, so the panel stays PANEL_H.
+function detailBody(v, d, t, mono, h) {
   return (v.wide ? h_flex() : v_flex())
     .w_full()
-    .h(BODY_H)
+    .h(h)
     .flex_none()
     .overflow_hidden()
-    .child(infoColumn(v, d, t, mono))
-    .child(filesColumn(v, d, t, mono));
+    .child(infoColumn(v, d, t, mono, h))
+    .child(filesColumn(v, d, t, mono, h));
 }
 
 function detailPanel(v, t, mono) {
@@ -697,8 +715,8 @@ function detailPanel(v, t, mono) {
         .when(!v.on, (e2) => e2.child(v.small("gg-pr-web", "Open in browser", (cx) => openPr(v, v.prSel, cx), t)))
         .child(
           v.small(
-            "gg-pr-close",
-            "Close",
+            "gg-pr-hide",
+            "Hide",
             (cx) => {
               clearPr(v);
               cx.notify();
@@ -707,14 +725,23 @@ function detailPanel(v, t, mono) {
           ),
         ),
     );
+  const bar = !v.prFile && hasActions(d);
   const body = v.prFile
     ? v.diffView(t, mono)
     : !d
       ? div().p(14).text_color(t.dim).child("Loading…")
       : d.error
         ? div().p(14).text_color(t.ansi1).child(d.error)
-        : detailBody(v, d, t, mono);
-  return v_flex().h(PANEL_H).flex_none().overflow_hidden().border_t(1).border_color(t.border).child(head).child(body);
+        : detailBody(v, d, t, mono, bar ? BODY_H - BAR_H : BODY_H);
+  return v_flex()
+    .h(PANEL_H)
+    .flex_none()
+    .overflow_hidden()
+    .border_t(1)
+    .border_color(t.border)
+    .child(head)
+    .when(bar, (e) => e.child(prActionBar(v, d, t, (cx) => reloadPr(v, cx))))
+    .child(body);
 }
 
 export function prPanel(v, t, mono) {

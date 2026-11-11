@@ -9,7 +9,7 @@ Source repo for Herdr desktop-app mods, one folder per mod, laid out like a Herd
 
 ### Architecture and change map
 
-- `git-panel/mods/git-panel/main.js`: the `View` class (state, refresh, tabs) that forwards to the feature modules, which are functions taking the view as `v` (ADR-008): `render.js` (layout), `ops.js` (the one write path `op()`, the two-click confirm, fetch/pull/push), `writes.js` (guarded commit writes), `detail.js`/`diff.js` (commit panel and diffs), `graph.js`/`log.js` (rows, lanes, log parsing), `menu.js` (branch menu), `search.js`, `ui.js` (widgets), `shared.js` (constants), `refs.js`, `config.js`, `status.js`, `history.js`. `prs.js`: Pull requests tab (uses `gh`). `mod.json`: overlay size/placement. `*.svg`: button icons. A new feature goes in its own module, not into `main.js`.
+- `git-panel/mods/git-panel/main.js`: the `View` class (state, refresh, tabs) that forwards to the feature modules, which are functions taking the view as `v` (ADR-008): `render.js` (layout), `ops.js` (the one write path `op()`, the two-click confirm, fetch/pull/push), `writes.js` (guarded commit writes), `detail.js`/`diff.js` (commit panel and diffs), `graph.js`/`log.js` (rows, lanes, log parsing), `menu.js` (branch menu), `search.js`, `ui.js` (widgets), `shared.js` (constants), `refs.js`, `config.js`, `status.js`, `history.js`. `prs.js`: Pull requests tab (uses `gh`). `prwrites.js`: the guarded GitHub writes (merge, close, ready for review, delete head branch) and their action bar (ADR-009). `mod.json`: overlay size/placement. `*.svg`: button icons. A new feature goes in its own module, not into `main.js`.
 - `git-panel/keys.json`: keys the mod expects; users merge it into `~/.config/herdr-app/keys.json`.
 - `git-panel/RECIPE.md`: brief to rebuild the mod. Update it when behavior or gotchas change.
 - `README.md`: mod table, trust note, install steps.
@@ -23,7 +23,7 @@ Source repo for Herdr desktop-app mods, one folder per mod, laid out like a Herd
 
 ### Constraints
 
-- Mods are unsandboxed JS that run `git` and `gh`. The mod never forces a push and never creates, merges, reviews or closes PRs on GitHub, and beyond fetch, pull, push, branch switching and `gh pr checkout` its local writes are limited to the set in ADR-007 (PR "Close" only dismisses the local detail panel); keep it that way unless the user asks. Keep the Security section of `README.md` in step with every `git`/`gh` subcommand the code runs.
+- Mods are unsandboxed JS that run `git` and `gh`. The mod never forces a push and never creates or reviews PRs on GitHub; its only GitHub writes are the two-click merge, close, ready-for-review and delete-head-branch of ADR-009 (never `--admin`, auto-merge or `gh`'s branch-delete flag), and beyond fetch, pull, push, branch switching and `gh pr checkout` its local writes are limited to the set in ADR-007 (the PR detail's "Hide" only dismisses the local panel); keep it that way unless the user asks. Keep the Security section of `README.md` in step with every `git`/`gh` subcommand the code runs.
 - gpui-kit limits (no handlers in `v_virtual_list` renderers, no `occlude`, reuse of `cx`) are listed in `git-panel/RECIPE.md`.
 - Preview with `herdr-app shot <file.png>` on a temporary tab (`herdr-app do tab.new --mod <name> --props '{...}'`, then `tab.close`); do not alter the user's layout or keys.
 
