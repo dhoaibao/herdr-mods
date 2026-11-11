@@ -221,7 +221,7 @@ export function configToolbar(v, t) {
         loadConfig(v, cx);
       },
       t,
-      { disabled: v.cfgLoading || !v.root, icon: "fetch" },
+      { disabled: v.cfgLoading || !v.root, icon: "reload" },
     ),
   ];
 }

@@ -350,8 +350,8 @@ export default class GitPanel extends View {
   button(id, label, fn, t, opts) {
     return button(this, id, label, fn, t, opts);
   }
-  small(id, label, fn, t, tone) {
-    return small(this, id, label, fn, t, tone);
+  small(id, label, fn, t, tone, opts) {
+    return small(this, id, label, fn, t, tone, opts);
   }
   field(id, state, t) {
     return field(this, id, state, t);

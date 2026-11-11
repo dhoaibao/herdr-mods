@@ -21,6 +21,7 @@ export const PR_STATES = [
   ["merged", "Merged"],
   ["closed", "Closed"],
 ];
+const PR_STATE_ICON = { open: "pr", merged: "merge", closed: "pr-closed" };
 const BAD = new Set(["FAILURE", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE", "ACTION_REQUIRED", "ERROR"]);
 
 export function ago(iso) {
@@ -315,12 +316,13 @@ export function prToolbar(v, t) {
     ...PR_STATES.map(([state, label]) =>
       v.button(`gg-pr-${state}`, label, (cx) => setPrState(v, state, cx), t, {
         tone: v.prState === state ? t.accent : null,
+        icon: PR_STATE_ICON[state],
       }),
     ),
     div().flex_1(),
     v.button("gg-pr-reload", "Reload", (cx) => loadPrs(v, cx, true), t, {
       disabled: v.prLoading || !v.root,
-      icon: "fetch",
+      icon: "reload",
     }),
   ];
 }
@@ -681,13 +683,15 @@ function detailPanel(v, t, mono) {
         .child(
           v.small(
             "gg-pr-back",
-            "‹ Details",
+            "Details",
             (cx) => {
               v.prFile = null;
               v.setDiff([]);
               cx.notify();
             },
             t,
+            null,
+            { icon: "back" },
           ),
         )
         .child(div().flex_1().min_w(0).truncate().font_family(mono).child(v.prFile)),
@@ -710,9 +714,15 @@ function detailPanel(v, t, mono) {
               if (!v.busy) checkoutPr(v, v.prSel, cx);
             },
             t,
+            null,
+            { icon: "checkout" },
           ),
         )
-        .when(!v.on, (e2) => e2.child(v.small("gg-pr-web", "Open in browser", (cx) => openPr(v, v.prSel, cx), t)))
+        .when(!v.on, (e2) =>
+          e2.child(
+            v.small("gg-pr-web", "Open in browser", (cx) => openPr(v, v.prSel, cx), t, null, { icon: "external" }),
+          ),
+        )
         .child(
           v.small(
             "gg-pr-hide",
@@ -722,6 +732,8 @@ function detailPanel(v, t, mono) {
               cx.notify();
             },
             t,
+            null,
+            { icon: "hide" },
           ),
         ),
     );

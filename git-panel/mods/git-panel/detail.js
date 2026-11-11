@@ -107,9 +107,9 @@ const guarded = (v, fn) => (cx) => {
 
 // The header row: the open commit's summary and Close, or the open file's name and Back.
 function detailHead(v, t, mono, c) {
-  const btn = (id, label, fn) => small(v, id, label, fn, t);
+  const btn = (id, label, fn, icon) => small(v, id, label, fn, t, null, { icon });
   const history = v.tab === "graph" && Boolean(c);
-  const pickBtn = (id, kind, label) => {
+  const pickBtn = (id, kind, label, icon) => {
     const armed = v.armed === pickKey(kind, c, v.branch);
     return small(
       v,
@@ -118,6 +118,7 @@ function detailHead(v, t, mono, c) {
       guarded(v, (cx) => pickCommit(v, kind, cx)),
       t,
       armed ? t.ansi1 : null,
+      { icon },
     );
   };
   return h_flex()
@@ -131,12 +132,17 @@ function detailHead(v, t, mono, c) {
     .when(v.openFile, (e) =>
       e
         .child(
-          btn("gg-back", "‹ Files", (cx) => {
-            v.openFile = null;
-            v.fileHist = null;
-            setDiff(v, []);
-            cx.notify();
-          }),
+          btn(
+            "gg-back",
+            "Files",
+            (cx) => {
+              v.openFile = null;
+              v.fileHist = null;
+              setDiff(v, []);
+              cx.notify();
+            },
+            "back",
+          ),
         )
         .child(div().flex_1().min_w(0).truncate().font_family(mono).text_size(13).child(v.openFile))
         .when(v.tab === "graph", (e2) =>
@@ -145,6 +151,7 @@ function detailHead(v, t, mono, c) {
               "gg-hist",
               v.fileHist ? "Diff" : "History",
               guarded(v, (cx) => toggleHistory(v, cx)),
+              v.fileHist ? "diff" : "history",
             ),
           ),
         ),
@@ -183,13 +190,20 @@ function detailHead(v, t, mono, c) {
         )
         .child(div().flex_1())
         .when(history, (e2) =>
-          e2.child(pickBtn("gg-cherry", "cherry-pick", "Cherry-pick")).child(pickBtn("gg-revert", "revert", "Revert")),
+          e2
+            .child(pickBtn("gg-cherry", "cherry-pick", "Cherry-pick", "cherry"))
+            .child(pickBtn("gg-revert", "revert", "Revert", "undo")),
         )
         .child(
-          btn("gg-close", "Close", (cx) => {
-            clearSel(v);
-            cx.notify();
-          }),
+          btn(
+            "gg-close",
+            "Close",
+            (cx) => {
+              clearSel(v);
+              cx.notify();
+            },
+            "close",
+          ),
         ),
     );
 }
@@ -240,7 +254,7 @@ function detailMessage(v, t, mono, c) {
               .text_color(t.muted)
               .child(c?.hash ?? ""),
           )
-          .child(small(v, "gg-copy", "Copy", (cx) => copyHash(v, c.hash, cx), t)),
+          .child(small(v, "gg-copy", "Copy", (cx) => copyHash(v, c.hash, cx), t, null, { icon: "copy" })),
         ...(c?.parents.length
           ? [
               h_flex()
@@ -367,7 +381,7 @@ function detailBody(v, t, mono, c) {
 
 // Branch, tag or detached checkout at this commit; only for a graph commit (not a stash).
 function detailActions(v, t, c) {
-  const btn = (id, label, fn) => small(v, id, label, fn, t);
+  const btn = (id, label, fn, icon) => small(v, id, label, fn, t, null, { icon });
   return v.tab === "graph" && !v.openFile && c
     ? h_flex()
         .h(44)
@@ -384,6 +398,7 @@ function detailActions(v, t, c) {
             "gg-branch-here",
             "Branch here",
             guarded(v, (cx) => createRef(v, "branch", cx)),
+            "branch-plus",
           ),
         )
         .child(
@@ -391,6 +406,7 @@ function detailActions(v, t, c) {
             "gg-tag-here",
             "Tag here",
             guarded(v, (cx) => createRef(v, "tag", cx)),
+            "tag",
           ),
         )
         .child(
@@ -398,6 +414,7 @@ function detailActions(v, t, c) {
             "gg-detach",
             "Check out (detached)",
             guarded(v, (cx) => detachHead(v, cx)),
+            "checkout",
           ),
         )
     : null;

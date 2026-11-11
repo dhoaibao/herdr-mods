@@ -243,23 +243,6 @@ export function deleteHeadBranch(v, cx, after) {
   );
 }
 
-// A button that cannot be used now: same shape as a small button, dimmed and inert.
-function dimmed(id, label, t) {
-  return div()
-    .id(id)
-    .px(10)
-    .h(26)
-    .flex_none()
-    .flex()
-    .items_center()
-    .rounded(6)
-    .border_1()
-    .border_color(t.border)
-    .text_size(13)
-    .text_color(t.dim)
-    .child(label);
-}
-
 // The row under the detail header: the merge method and Merge (open, not a draft), Ready for review
 // (a draft), Close PR (open) and Delete branch (merged). A button armed for its second click turns
 // ansi1 and says what the click will do.
@@ -267,8 +250,8 @@ export function prActionBar(v, d, t, after) {
   const open = d.state === "OPEN",
     method = methodOf(v),
     block = open && !d.isDraft ? mergeBlock(d) : null;
-  const act = (id, text, key, armedText, fn) =>
-    v.small(id, v.armed === key ? armedText : text, fn, t, v.armed === key ? t.ansi1 : null);
+  const act = (id, text, key, armedText, fn, icon) =>
+    v.small(id, v.armed === key ? armedText : text, fn, t, v.armed === key ? t.ansi1 : null, { icon });
   const kids = [];
   if (open && !d.isDraft) {
     kids.push(div().flex_none().text_size(12).text_color(t.dim).child("Method"));
@@ -289,9 +272,14 @@ export function prActionBar(v, d, t, after) {
       );
     kids.push(
       block
-        ? dimmed("gg-pr-merge", "Merge", t)
-        : act("gg-pr-merge", "Merge", mergeKey(d, method), `Click again to merge #${d.number} (${method})`, (cx) =>
-            mergePr(v, cx, after),
+        ? v.small("gg-pr-merge", "Merge", () => {}, t, null, { icon: "merge", disabled: true })
+        : act(
+            "gg-pr-merge",
+            "Merge",
+            mergeKey(d, method),
+            `Click again to merge #${d.number} (${method})`,
+            (cx) => mergePr(v, cx, after),
+            "merge",
           ),
     );
   }
@@ -306,18 +294,35 @@ export function prActionBar(v, d, t, after) {
   );
   if (open && d.isDraft)
     kids.push(
-      act("gg-pr-ready", "Ready for review", readyKey(d), `Click again to mark #${d.number} ready`, (cx) =>
-        readyPr(v, cx, after),
+      act(
+        "gg-pr-ready",
+        "Ready for review",
+        readyKey(d),
+        `Click again to mark #${d.number} ready`,
+        (cx) => readyPr(v, cx, after),
+        "ready",
       ),
     );
   if (open)
     kids.push(
-      act("gg-pr-closepr", "Close PR", closeKey(d), `Click again to close #${d.number}`, (cx) => closePr(v, cx, after)),
+      act(
+        "gg-pr-closepr",
+        "Close PR",
+        closeKey(d),
+        `Click again to close #${d.number}`,
+        (cx) => closePr(v, cx, after),
+        "pr-closed",
+      ),
     );
   if (canDelete(d))
     kids.push(
-      act("gg-pr-delbranch", "Delete branch", delKey(d), `Click again to delete ${clip(d.headRefName)}`, (cx) =>
-        deleteHeadBranch(v, cx, after),
+      act(
+        "gg-pr-delbranch",
+        "Delete branch",
+        delKey(d),
+        `Click again to delete ${clip(d.headRefName)}`,
+        (cx) => deleteHeadBranch(v, cx, after),
+        "trash",
       ),
     );
   return h_flex()

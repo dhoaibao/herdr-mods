@@ -1,5 +1,5 @@
 // The view's render: tabs, the toolbar of the shown tab, the note and banner bars, and the panels.
-import { div } from "gpui-kit";
+import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list } from "gpui-base";
 import { theme, settings } from "herdr";
 import { prChip, prPanel, prToolbar } from "./prs.js";
@@ -28,10 +28,10 @@ function tabsRow(v, t) {
       h_flex()
         .h_full()
         .gap(2)
-        .child(tabButton(v, "gg-tab-graph", "Graph", "graph", t))
-        .child(tabButton(v, "gg-tab-refs", "Refs", "refs", t))
-        .child(tabButton(v, "gg-tab-prs", "Pull requests", "prs", t))
-        .child(tabButton(v, "gg-tab-config", "Config", "config", t)),
+        .child(tabButton(v, "gg-tab-graph", "Graph", "graph", t, "graph"))
+        .child(tabButton(v, "gg-tab-refs", "Refs", "refs", t, "branch"))
+        .child(tabButton(v, "gg-tab-prs", "Pull requests", "prs", t, "pr"))
+        .child(tabButton(v, "gg-tab-config", "Config", "config", t, "settings")),
     );
 }
 
@@ -45,7 +45,10 @@ function graphControls(v, t, e) {
       button(
         v,
         "gg-branch",
-        [div().max_w(220).truncate().child(branchLabel), div().text_size(11).child("▾")],
+        [
+          div().max_w(220).truncate().child(branchLabel),
+          svg("mods/git-panel/chevron-down.svg").size(12).flex_none().text_color(t.accent),
+        ],
         (cx) => openMenu(v, cx),
         t,
         { disabled: !v.root, tone: t.accent, icon: "branch" },
@@ -64,6 +67,7 @@ function graphControls(v, t, e) {
     .child(
       button(v, "gg-pull", s?.behind ? `Pull ↓${s.behind}` : "Pull", (cx) => pull(v, cx), t, {
         disabled: off || !v.branch,
+        tone: s?.behind ? t.ansi3 : null,
         icon: "pull",
       }),
     )
@@ -78,7 +82,11 @@ function graphControls(v, t, e) {
             : "Push",
         (cx) => push(v, cx),
         t,
-        { disabled: off || !v.branch, tone: v.armed === "push" ? t.ansi1 : null, icon: "push" },
+        {
+          disabled: off || !v.branch,
+          tone: v.armed === "push" ? t.ansi1 : s?.ahead ? t.ansi2 : null,
+          icon: "push",
+        },
       ),
     );
 }
@@ -176,6 +184,7 @@ function progressBanner(v, t) {
           },
           t,
           v.armed === abortKey(v) ? t.ansi1 : null,
+          { icon: "ban" },
         ),
       ),
     );

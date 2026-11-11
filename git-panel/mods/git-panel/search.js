@@ -69,7 +69,17 @@ export function searchBox(v, t) {
     .when(n > 1, (e) =>
       e
         // Like the toolbar buttons, ignore a click that only dismissed the branch menu.
-        .child(small(v, "gg-hit-prev", "↑", (cx) => !v.blocked() && nextHit(v, -1, cx), t))
-        .child(small(v, "gg-hit-next", "↓", (cx) => !v.blocked() && nextHit(v, 1, cx), t)),
+        .child(
+          small(v, "gg-hit-prev", "", (cx) => !v.blocked() && nextHit(v, -1, cx), t, null, {
+            icon: "up",
+            tip: "Previous match",
+          }),
+        )
+        .child(
+          small(v, "gg-hit-next", "", (cx) => !v.blocked() && nextHit(v, 1, cx), t, null, {
+            icon: "down",
+            tip: "Next match",
+          }),
+        ),
     );
 }

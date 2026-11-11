@@ -17,6 +17,7 @@ export const SECTIONS = [
   ["stashes", "Stashes"],
   ["reflog", "Reflog"],
 ];
+const SECTION_ICON = { branches: "branch", tags: "tag", stashes: "archive", reflog: "history" };
 const NOUN = {
   branches: ["branch", "branches"],
   tags: ["tag", "tags"],
@@ -321,7 +322,7 @@ export function refsToolbar(v, t) {
         v.refs[id].length ? `${label} ${v.refs[id].length}` : label,
         (cx) => setRefsSection(v, id, cx),
         t,
-        { tone: v.refsSection === id ? t.accent : null },
+        { tone: v.refsSection === id ? t.accent : null, icon: SECTION_ICON[id] },
       ),
     ),
     div().flex_1(),
@@ -330,6 +331,7 @@ export function refsToolbar(v, t) {
           v.field("gg-stash-msg", v.stashMsg, t).w(220),
           v.button("gg-stash-push", "Stash changes", (cx) => stashChanges(v, cx), t, {
             disabled: !v.root || Boolean(v.busy) || v.work?.changed === 0,
+            icon: "archive",
           }),
         ]
       : []),
@@ -341,7 +343,7 @@ export function refsToolbar(v, t) {
         loadRefs(v, cx, true);
       },
       t,
-      { disabled: Boolean(v.refsLoading) || !v.root, icon: "fetch" },
+      { disabled: Boolean(v.refsLoading) || !v.root, icon: "reload" },
     ),
   ];
 }
@@ -487,6 +489,8 @@ function stashBar(v, t, mono, s) {
         "Apply",
         guarded((cx) => applyStash(v, s, cx)),
         t,
+        null,
+        { icon: "check" },
       ),
     )
     .child(
@@ -496,6 +500,7 @@ function stashBar(v, t, mono, s) {
         guarded((cx) => removeStash(v, s, cx, "pop")),
         t,
         pop ? t.ansi1 : null,
+        { icon: "restore" },
       ),
     )
     .child(
@@ -505,6 +510,7 @@ function stashBar(v, t, mono, s) {
         guarded((cx) => removeStash(v, s, cx, "drop")),
         t,
         drop ? t.ansi1 : null,
+        { icon: "trash" },
       ),
     );
 }
@@ -531,6 +537,8 @@ function branchBar(v, t, mono, b) {
         "Rename",
         guarded((cx) => renameBranch(v, b, cx)),
         t,
+        null,
+        { icon: "rename" },
       ),
     )
     .child(div().flex_1())
@@ -542,6 +550,7 @@ function branchBar(v, t, mono, b) {
           guarded((cx) => deleteBranch(v, b, cx)),
           t,
           del ? t.ansi1 : null,
+          { icon: "trash" },
         ),
       ),
     );
