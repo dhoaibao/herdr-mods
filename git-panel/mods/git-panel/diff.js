@@ -1,8 +1,8 @@
 // The file diff of the commit detail panel: loading it, marking changed words, and the row renderer.
 import { div } from "gpui-kit";
-import { h_flex, Scrollbar, v_virtual_list } from "gpui-base";
+import { h_flex, v_flex, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
-import { READ, alpha } from "./shared.js";
+import { READ, DIFF_LINES, alpha, clipDiff } from "./shared.js";
 
 export function pickFile(v, path, cx) {
   v.openFile = path;
@@ -43,17 +43,26 @@ export function pickFile(v, path, cx) {
     } catch (e) {
       lines = [`Cannot show this diff: ${e}`];
     }
-    if (same())
-      setDiff(
-        v,
-        lines.slice(0, 2000).map((l) => (l.length > 4000 ? l.slice(0, 4000) + "… (line truncated)" : l)),
-      );
+    if (same()) {
+      setDiff(v, clipDiff(lines));
+      // Set after setDiff, which clears it: only a commit's file diff says it was cut (the PR diff does not).
+      if (lines.length > DIFF_LINES)
+        v.diffNote = `Showing the first ${DIFF_LINES} of ${lines.length} lines of this diff`;
+    }
     cx.notify();
   });
   cx.notify();
 }
 
+// Opens the file `d` places after (or before) the open one in the commit's file list.
+export function stepFile(v, d, cx) {
+  const at = v.files.findIndex((f) => f.path === v.openFile),
+    next = v.files[at + d];
+  if (at >= 0 && next) pickFile(v, next.path, cx);
+}
+
 export function setDiff(v, lines) {
+  v.diffNote = null;
   let old = 0,
     next = 0;
   const rows = lines.map((line) => {
@@ -173,8 +182,32 @@ export function diffRow(v, row, t) {
     );
 }
 
-// The parsed diff in `v.diff`: scrolls both ways, one line per row.
+// The parsed diff in `v.diff`: scrolls both ways, one line per row. A note above it (plain text)
+// says when the diff was cut.
 export function diffView(v, t, mono) {
+  return v_flex()
+    .flex_1()
+    .min_h(0)
+    .when(Boolean(v.diffNote), (e) =>
+      e.child(
+        div()
+          .h(26)
+          .flex_none()
+          .px(12)
+          .flex()
+          .items_center()
+          .bg(alpha(t.ansi3, "18"))
+          .border_b(1)
+          .border_color(t.border)
+          .text_size(12)
+          .text_color(t.ansi3)
+          .child(v.diffNote),
+      ),
+    )
+    .child(diffBody(v, t, mono));
+}
+
+function diffBody(v, t, mono) {
   return div()
     .flex_1()
     .min_h(0)

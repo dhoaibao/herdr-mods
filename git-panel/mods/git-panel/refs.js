@@ -1,16 +1,16 @@
 // The Refs tab of the Git Panel mod: local branches (upstream, ahead/behind, merged), tags, stashes
 // and the reflog. The lists are read-only; the only writes here are the branch and stash actions of
-// ADR-007 (rename and delete a branch, stash push, apply, pop and drop), all run through the view's
-// op(). A stash can be opened to see its files and
+// ADR-007 (rename and delete a branch, stash push, apply, pop and drop) and the branch Switch of the
+// branch menu, all run through the view's op(). A tag, a reflog entry or a branch can be shown in the
+// Graph tab (read-only). A stash can be opened to see its files and
 // diff in the commit detail panel (detail.js). Functions take the GitPanel view as `v` and keep their state on it under
 // the `refs*` names.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
+import { READ, ROW, alpha, guarded } from "./shared.js";
+import { switchBranch } from "./ops.js";
 
-const ROW = 28;
-// The same read-only flags as shared.js: no index refresh or lock, so our own folder watch never fires.
-const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 export const SECTIONS = [
   ["branches", "Branches"],
   ["tags", "Tags"],
@@ -30,9 +30,6 @@ const EMPTY = {
   stashes: "No stashes",
   reflog: "No reflog entries",
 };
-/** Appends an alpha byte to a #rrggbb theme color; the cast satisfies the element API's hex-template type. */
-const alpha = (color, a) => /** @type {`#${string}`} */ (color + a);
-
 // for-each-ref understands `%1f` (not `%x1f`, which is for `log`-style formats) as a unit separator.
 const BRANCH_FORMAT =
   "%(HEAD)%1f%(refname:lstrip=2)%1f%(upstream:short)%1f%(upstream:track)%1f%(committerdate:relative)%1f%(objectname)%1f%(contents:subject)";
@@ -93,6 +90,7 @@ export function parseTags(text) {
       annotated: type === "tag",
       when: when ?? "",
       subject: subject ?? "",
+      hash: peeled || hash || "",
       short: (peeled || hash || "").slice(0, 7),
     };
   });
@@ -110,7 +108,7 @@ export function parseStashes(text) {
 export function parseReflog(text) {
   return lines(text).map((line) => {
     const [hash, ref, message, when] = line.split("\x1f");
-    return { ref, short: (hash ?? "").slice(0, 7), message: message ?? "", when: when ?? "" };
+    return { ref, hash: hash ?? "", short: (hash ?? "").slice(0, 7), message: message ?? "", when: when ?? "" };
   });
 }
 
@@ -312,6 +310,13 @@ function deleteBranch(v, b, cx) {
   });
 }
 
+// Read-only: opens the Graph tab with the commit selected and centered (or the not-in-loaded-graph note).
+function showInGraph(v, hash, cx) {
+  if (!HASH.test(hash)) return;
+  v.setTab("graph", cx);
+  v.jumpTo(hash, cx);
+}
+
 // Header controls while this tab shows: the four lists with their counts, the stash controls under
 // Stashes, and a reload.
 export function refsToolbar(v, t) {
@@ -412,6 +417,7 @@ function branchRow(v, b, t, mono) {
 
 function tagRow(v, g, t, mono) {
   return rowBase()
+    .cursor_pointer()
     .hover((s) => s.bg(t.hover))
     .child(
       div()
@@ -449,6 +455,7 @@ function stashRow(v, s, t, mono) {
 
 function reflogRow(v, r, t, mono) {
   return rowBase()
+    .cursor_pointer()
     .hover((s) => s.bg(t.hover))
     .child(cell(90, t, r.ref, t.dim, mono))
     .child(cell(60, t, r.short, t.dim, mono))
@@ -462,9 +469,6 @@ const RENDER = { branches: branchRow, tags: tagRow, stashes: stashRow, reflog: r
 function stashBar(v, t, mono, s) {
   const pop = v.armed === stashKey("pop", s),
     drop = v.armed === stashKey("drop", s);
-  const guarded = (fn) => (cx) => {
-    if (!v.blocked()) fn(cx);
-  };
   return h_flex()
     .h(44)
     .flex_none()
@@ -487,7 +491,7 @@ function stashBar(v, t, mono, s) {
       v.small(
         "gg-stash-apply",
         "Apply",
-        guarded((cx) => applyStash(v, s, cx)),
+        guarded(v, (cx) => applyStash(v, s, cx)),
         t,
         null,
         { icon: "check" },
@@ -497,7 +501,7 @@ function stashBar(v, t, mono, s) {
       v.small(
         "gg-stash-pop",
         pop ? "Click again to pop" : "Pop",
-        guarded((cx) => removeStash(v, s, cx, "pop")),
+        guarded(v, (cx) => removeStash(v, s, cx, "pop")),
         t,
         pop ? t.ansi1 : null,
         { icon: "restore" },
@@ -507,7 +511,7 @@ function stashBar(v, t, mono, s) {
       v.small(
         "gg-stash-drop",
         drop ? "Click again to drop" : "Drop",
-        guarded((cx) => removeStash(v, s, cx, "drop")),
+        guarded(v, (cx) => removeStash(v, s, cx, "drop")),
         t,
         drop ? t.ansi1 : null,
         { icon: "trash" },
@@ -515,12 +519,9 @@ function stashBar(v, t, mono, s) {
     );
 }
 
-// Actions on the open branch, under the list: rename it, or delete it when it is merged.
+// Actions on the open branch, under the list: show it in the graph, switch to it, rename it, or delete it when it is merged.
 function branchBar(v, t, mono, b) {
   const del = v.armed === delKey(b);
-  const guarded = (fn) => (cx) => {
-    if (!v.blocked()) fn(cx);
-  };
   return h_flex()
     .h(44)
     .flex_none()
@@ -535,19 +536,41 @@ function branchBar(v, t, mono, b) {
       v.small(
         "gg-branch-rename",
         "Rename",
-        guarded((cx) => renameBranch(v, b, cx)),
+        guarded(v, (cx) => renameBranch(v, b, cx)),
         t,
         null,
         { icon: "rename" },
       ),
     )
     .child(div().flex_1())
+    .child(
+      v.small(
+        "gg-branch-graph",
+        "Show in graph",
+        guarded(v, (cx) => showInGraph(v, b.hash, cx)),
+        t,
+        null,
+        { icon: "graph" },
+      ),
+    )
+    .when(!b.current, (e) =>
+      e.child(
+        v.small(
+          "gg-branch-switch",
+          "Switch",
+          guarded(v, (cx) => switchBranch(v, b.name, cx)),
+          t,
+          null,
+          { icon: "checkout" },
+        ),
+      ),
+    )
     .when(b.merged && !b.current, (e) =>
       e.child(
         v.small(
           "gg-branch-delete",
           del ? "Click again to delete" : "Delete (merged)",
-          guarded((cx) => deleteBranch(v, b, cx)),
+          guarded(v, (cx) => deleteBranch(v, b, cx)),
           t,
           del ? t.ansi1 : null,
           { icon: "trash" },
@@ -598,7 +621,12 @@ export function refsPanel(v, t, mono) {
               ? list.on_item_click((name, cx) => {
                   if (!v.blocked()) toggleBranch(v, name, cx);
                 })
-              : list,
+              : section === "tags" || section === "reflog"
+                ? list.on_item_click((i, cx) => {
+                    const hash = items[Number(i)]?.hash;
+                    if (hash && !v.blocked()) showInGraph(v, hash, cx);
+                  })
+                : list,
         )
         .child(Scrollbar.vertical(`gg-refs-list-${section}`).viewport_from_layout().absolute().inset_0())
         .when(!items.length, (e) => e.child(v.emptyState(empty, v.refsError ? t.ansi1 : t.dim, t))),
@@ -618,10 +646,10 @@ export function refsPanel(v, t, mono) {
             section === "stashes"
               ? " · click one to see its changes"
               : section === "branches"
-                ? " · click one to rename or delete it"
+                ? " · click one to switch, rename or delete it"
                 : section === "reflog"
-                  ? " · most recent 100"
-                  : " · read-only"
+                  ? " · most recent 100 · click one to show it in the graph"
+                  : " · click one to show it in the graph"
           }`,
         ),
     )

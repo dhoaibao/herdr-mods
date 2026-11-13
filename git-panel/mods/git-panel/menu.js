@@ -4,7 +4,7 @@ import { v_flex, h_flex, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
 import { validRefName } from "./refs.js";
 import { READ, ROW, alpha } from "./shared.js";
-import { op } from "./ops.js";
+import { op, switchBranch } from "./ops.js";
 import { pill } from "./ui.js";
 
 export function closeMenu(v, cx) {
@@ -74,7 +74,8 @@ export function checkout(v, key, cx) {
   closeMenu(v, cx);
   if (name.startsWith("-")) return;
   if (kind === "n") op(v, `Create ${name}`, ["switch", "-c", name], cx);
-  else op(v, `Switch to ${name}`, kind === "r" ? ["switch", "--track", name] : ["switch", name], cx);
+  else if (kind === "r") op(v, `Switch to ${name}`, ["switch", "--track", name], cx);
+  else switchBranch(v, name, cx);
 }
 
 export function branchRow(v, b, t) {

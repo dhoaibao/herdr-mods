@@ -11,3 +11,13 @@ export const ABORT = { MERGING: "merge", REBASING: "rebase", "CHERRY-PICKING": "
 
 /** Appends an alpha byte to a #rrggbb theme color; the cast satisfies the element API's hex-template type. */
 export const alpha = (color, a) => /** @type {`#${string}`} */ (color + a);
+
+// The buttons that write ignore a click that only dismissed the branch menu.
+export const guarded = (v, fn) => (cx) => {
+  if (!v.blocked()) fn(cx);
+};
+
+// A file diff shows at most this many lines, each cut to 4000 characters.
+export const DIFF_LINES = 2000;
+export const clipDiff = (lines) =>
+  lines.slice(0, DIFF_LINES).map((l) => (l.length > 4000 ? l.slice(0, 4000) + "… (line truncated)" : l));

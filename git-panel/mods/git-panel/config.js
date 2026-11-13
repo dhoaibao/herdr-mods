@@ -5,8 +5,8 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec, props } from "herdr";
+import { ROW } from "./shared.js";
 
-const ROW = 28;
 export const CONFIG_SCOPES = [
   ["all", "All"],
   ["local", "Local"],

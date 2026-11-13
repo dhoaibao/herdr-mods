@@ -22,7 +22,7 @@ A repository overlay with four tabs. (It was called `git-graph` until it grew pa
 - Operation status is reported as plain text, including git's own error messages.
 
 **Refs**
-- Lists (read-only): local branches (upstream, `↑n`/`↓n`, `gone`, and `merged` when reachable from HEAD), tags (annotated or not), stashes and the reflog (most recent 100). Click a stash to see its files and diff and to apply, pop or drop it; click a branch to rename or delete it.
+- Lists (read-only): local branches (upstream, `↑n`/`↓n`, `gone`, and `merged` when reachable from HEAD), tags (annotated or not), stashes and the reflog (most recent 100). Click a stash to see its files and diff and to apply, pop or drop it; click a branch to show it in the graph, switch to it, rename or delete it; click a tag or reflog entry to show its commit in the graph.
 
 **Pull requests** (requires [`gh`](https://cli.github.com))
 - Open, Merged and Closed lists with CI status, draft state, review decision, branch and author.

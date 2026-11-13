@@ -107,7 +107,8 @@ function toolbarRow(v, t) {
     .when(v.tab === "config", (e) => e.children(configToolbar(v, t)));
 }
 
-// The running operation or its outcome; a click dismisses the outcome.
+// The running operation or its outcome; a click dismisses the outcome. A kept note (it carries a
+// recovery command) says so, because it never goes away on its own.
 function noteBar(v, t) {
   return h_flex()
     .id("gg-note")
@@ -142,6 +143,9 @@ function noteBar(v, t) {
         .flex_1()
         .min_w(0)
         .child(v.busy ? `${v.busy}…` : v.note.text),
+    )
+    .when(!v.busy && Boolean(v.note?.keep), (e) =>
+      e.child(div().flex_none().ml(12).text_size(12).text_color(t.dim).child("Click to dismiss")),
     );
 }
 
@@ -268,7 +272,7 @@ export function renderPanel(v, cx) {
     .child(tabsRow(v, t))
     .child(toolbarRow(v, t))
     .when(Boolean(v.busy || v.note), (e) => e.child(noteBar(v, t)))
-    .when(graph && Boolean(v.inprog), (e) => e.child(progressBanner(v, t)))
+    .when(Boolean(v.inprog), (e) => e.child(progressBanner(v, t)))
     .when(graph, (e) => e.child(commitList(v, t)))
     .when(v.tab === "prs", (e) => e.child(prPanel(v, t, mono)))
     .when(v.tab === "refs", (e) => e.child(refsPanel(v, t, mono)))
