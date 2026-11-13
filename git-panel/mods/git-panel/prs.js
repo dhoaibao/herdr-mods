@@ -7,6 +7,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, TextView, v_virtual_list } from "gpui-base";
 import { exec } from "herdr";
 import { BAR_H, hasActions, prActionBar } from "./prwrites.js";
+import { clipDiff } from "./shared.js";
 
 const LIST_FIELDS =
   "number,title,author,headRefName,baseRefName,isDraft,state,updatedAt,reviewDecision,statusCheckRollup,url";
@@ -277,8 +278,7 @@ export function pickPrFile(v, path, cx) {
     } catch (e) {
       lines = [`Cannot show this diff: ${e?.message ?? e}`];
     }
-    if (same())
-      v.setDiff(lines.slice(0, 2000).map((l) => (l.length > 4000 ? l.slice(0, 4000) + "… (line truncated)" : l)));
+    if (same()) v.setDiff(clipDiff(lines));
     cx.notify();
   });
   cx.notify();

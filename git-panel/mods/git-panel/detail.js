@@ -2,9 +2,9 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec } from "herdr";
-import { READ, alpha } from "./shared.js";
+import { READ, alpha, guarded } from "./shared.js";
 import { small, field } from "./ui.js";
-import { pickFile, setDiff, diffView } from "./diff.js";
+import { pickFile, setDiff, stepFile, diffView } from "./diff.js";
 import { createRef, pickCommit, pickKey, detachHead } from "./writes.js";
 import { toggleHistory, fileHistoryView } from "./history.js";
 
@@ -100,14 +100,9 @@ export function jumpTo(v, hash, cx) {
   v.scroll.scroll_to_item(at, "center");
 }
 
-// The buttons that write ignore a click that only dismissed the branch menu.
-const guarded = (v, fn) => (cx) => {
-  if (!v.blocked()) fn(cx);
-};
-
 // The header row: the open commit's summary and Close, or the open file's name and Back.
 function detailHead(v, t, mono, c) {
-  const btn = (id, label, fn, icon) => small(v, id, label, fn, t, null, { icon });
+  const btn = (id, label, fn, icon, opts = {}) => small(v, id, label, fn, t, null, { icon, ...opts });
   const history = v.tab === "graph" && Boolean(c);
   const pickBtn = (id, kind, label, icon) => {
     const armed = v.armed === pickKey(kind, c, v.branch);
@@ -145,6 +140,30 @@ function detailHead(v, t, mono, c) {
           ),
         )
         .child(div().flex_1().min_w(0).truncate().font_family(mono).text_size(13).child(v.openFile))
+        // Step to the neighbor file of the commit; not while the file's history shows in place of its diff.
+        .when(v.files.length > 1 && !v.fileHist, (e2) => {
+          const at = v.files.findIndex((f) => f.path === v.openFile);
+          return e2
+            .child(
+              div()
+                .flex_none()
+                .text_size(12)
+                .text_color(t.dim)
+                .child(at < 0 ? `${v.files.length} files` : `${at + 1}/${v.files.length}`),
+            )
+            .child(
+              btn("gg-file-prev", "", (cx) => stepFile(v, -1, cx), "up", {
+                tip: "Previous file",
+                disabled: at <= 0,
+              }),
+            )
+            .child(
+              btn("gg-file-next", "", (cx) => stepFile(v, 1, cx), "down", {
+                tip: "Next file",
+                disabled: at < 0 || at >= v.files.length - 1,
+              }),
+            );
+        })
         .when(v.tab === "graph", (e2) =>
           e2.child(
             btn(

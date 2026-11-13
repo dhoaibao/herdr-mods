@@ -38,6 +38,7 @@ export function op(v, label, args, cx, cmd = "git", extra = {}) {
       const out = `${r.stderr}\n${r.stdout}`.trim();
       v.note = {
         ok,
+        keep: ok && Boolean(extra.keep),
         text: ok
           ? (extra.ok ?? `${label}: done`)
           : out.split("\n").slice(-4).join("\n") || `${label} failed (exit ${r.code})`,
@@ -63,6 +64,13 @@ export function op(v, label, args, cx, cmd = "git", extra = {}) {
     }
   });
   cx.notify();
+}
+
+// `git switch <name>` for a local branch, as the Graph tab's branch menu and the Refs branch bar do it.
+// A name starting with "-" would be parsed as an option, so it is never handed to git.
+export function switchBranch(v, name, cx) {
+  if (name.startsWith("-")) return;
+  op(v, `Switch to ${name}`, ["switch", name], cx);
 }
 
 export function fetchAll(v, cx) {

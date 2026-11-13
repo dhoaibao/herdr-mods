@@ -5,3 +5,4 @@ bun.lock
 *.svg
 *.png
 install.sh
+.b-agentic/
