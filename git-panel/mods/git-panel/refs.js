@@ -114,7 +114,8 @@ export function parseReflog(text) {
 
 // The two-click key of a branch delete names the branch and its commit: two branches can point at one
 // commit, and arming one must never let a single click delete the other.
-const delKey = (b) => `del:${b.hash}:${b.name}`;
+// An unmerged branch (`-D`) has its own key, so a merged-branch arm can never carry over to it.
+const delKey = (b) => `del:${b.hash}:${b.name}${b.merged ? "" : ":force"}`;
 
 // Opens (or closes) a branch's bar. A pending delete and a typed new name belong to the branch that was open.
 function toggleBranch(v, name, cx) {
@@ -287,22 +288,22 @@ function renameBranch(v, b, cx) {
   });
 }
 
-// `git branch -d -- <name>` (never -D): only a branch that is merged into HEAD, never the current one,
-// two clicks, and only while it still points where the list said. Git applies its own merged check
-// as well. The success note keeps the hash and the command that recreates the branch.
+// `git branch -d -- <name>` for a branch merged into HEAD, `-D` for one that is not (its commits then
+// stay only in the reflog). Never the current one, two clicks, and only while it still points where
+// the list said. The success note keeps the hash and the command that recreates the branch.
 function deleteBranch(v, b, cx) {
   const block = v.writeBlock();
   if (block) return v.refuse(block, cx);
-  if (b.current || !b.merged || !HASH.test(b.hash)) return;
+  if (b.current || !HASH.test(b.hash)) return;
   if (!v.confirm(delKey(b), cx)) return;
-  v.op(`Delete ${b.name}`, ["branch", "-d", "--", b.name], cx, "git", {
+  v.op(`Delete ${b.name}`, ["branch", b.merged ? "-d" : "-D", "--", b.name], cx, "git", {
     check: async (run) => {
       const r = await run(["rev-parse", "--verify", "--quiet", `refs/heads/${b.name}`]);
       return r.code === 0 && r.stdout.trim() === b.hash
         ? null
         : `${b.name} has moved since the list was read: reload and pick it again`;
     },
-    ok: `Deleted branch ${b.name} (was ${b.hash}). To restore it: git branch ${b.name} ${b.hash}`,
+    ok: `Deleted ${b.merged ? "" : "unmerged "}branch ${b.name} (was ${b.hash}). To restore it: git branch ${b.name} ${b.hash}`,
     keep: true,
     done: () => {
       v.refsBranch = null;
@@ -519,7 +520,7 @@ function stashBar(v, t, mono, s) {
     );
 }
 
-// Actions on the open branch, under the list: show it in the graph, switch to it, rename it, or delete it when it is merged.
+// Actions on the open branch, under the list: show it in the graph, switch to it, rename it, or delete it.
 function branchBar(v, t, mono, b) {
   const del = v.armed === delKey(b);
   return h_flex()
@@ -565,11 +566,17 @@ function branchBar(v, t, mono, b) {
         ),
       ),
     )
-    .when(b.merged && !b.current, (e) =>
+    .when(!b.current, (e) =>
       e.child(
         v.small(
           "gg-branch-delete",
-          del ? "Click again to delete" : "Delete (merged)",
+          del
+            ? b.merged
+              ? "Click again to delete"
+              : "Click again to delete unmerged"
+            : b.merged
+              ? "Delete (merged)"
+              : "Delete (unmerged)",
           guarded(v, (cx) => deleteBranch(v, b, cx)),
           t,
           del ? t.ansi1 : null,
