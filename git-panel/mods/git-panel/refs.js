@@ -114,8 +114,11 @@ export function parseReflog(text) {
 
 // The two-click key of a branch delete names the branch and its commit: two branches can point at one
 // commit, and arming one must never let a single click delete the other.
-// An unmerged branch (`-D`) has its own key, so a merged-branch arm can never carry over to it.
-const delKey = (b) => `del:${b.hash}:${b.name}${b.merged ? "" : ":force"}`;
+// `git branch -d` refuses a branch that is not merged into its upstream (or HEAD when it has none), so a
+// branch that is unmerged, or merged into HEAD but ahead of its upstream, needs `-D` (ADR-010).
+const needsForce = (b) => !b.merged || b.ahead > 0;
+// A `-D` delete has its own key, so a `-d` arm can never carry over to it.
+const delKey = (b) => `del:${b.hash}:${b.name}${needsForce(b) ? ":force" : ""}`;
 
 // Opens (or closes) a branch's bar. A pending delete and a typed new name belong to the branch that was open.
 function toggleBranch(v, name, cx) {
@@ -288,20 +291,27 @@ function renameBranch(v, b, cx) {
   });
 }
 
-// `git branch -d -- <name>` for a branch merged into HEAD, `-D` for one that is not (its commits then
-// stay only in the reflog). Never the current one, two clicks, and only while it still points where
-// the list said. The success note keeps the hash and the command that recreates the branch.
+// `git branch -d -- <name>` for a branch merged into HEAD and not ahead of its upstream, `-D` for one
+// that is unmerged (its commits then stay only in the reflog) or merged into HEAD but ahead of its
+// upstream (where `-d` always refuses). Never the current one, two clicks, and only while it still
+// points where the list said; a merged one deleted with `-D` must also still be in HEAD. The success
+// note keeps the hash and the command that recreates the branch.
 function deleteBranch(v, b, cx) {
   const block = v.writeBlock();
   if (block) return v.refuse(block, cx);
   if (b.current || !HASH.test(b.hash)) return;
   if (!v.confirm(delKey(b), cx)) return;
-  v.op(`Delete ${b.name}`, ["branch", b.merged ? "-d" : "-D", "--", b.name], cx, "git", {
+  const force = needsForce(b);
+  v.op(`Delete ${b.name}`, ["branch", force ? "-D" : "-d", "--", b.name], cx, "git", {
     check: async (run) => {
       const r = await run(["rev-parse", "--verify", "--quiet", `refs/heads/${b.name}`]);
-      return r.code === 0 && r.stdout.trim() === b.hash
-        ? null
-        : `${b.name} has moved since the list was read: reload and pick it again`;
+      if (!(r.code === 0 && r.stdout.trim() === b.hash))
+        return `${b.name} has moved since the list was read: reload and pick it again`;
+      if (b.merged && force) {
+        const m = await run(["merge-base", "--is-ancestor", b.hash, "HEAD"]);
+        if (m.code !== 0) return `${b.name} is no longer merged into HEAD: reload and pick it again`;
+      }
+      return null;
     },
     ok: `Deleted ${b.merged ? "" : "unmerged "}branch ${b.name} (was ${b.hash}). To restore it: git branch ${b.name} ${b.hash}`,
     keep: true,

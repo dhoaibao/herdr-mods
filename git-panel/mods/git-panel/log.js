@@ -4,6 +4,22 @@ import { MAX_LANES } from "./shared.js";
 
 export const FORMAT = "%H%x1f%P%x1f%an%x1f%ar%x1f%D%x1f%s%x1e";
 
+const HEADS = "refs/heads/";
+const REMOTES = "refs/remotes/";
+const TAGS = "refs/tags/";
+
+// One `%D` decoration, printed with `--decorate=full` so the ref's namespace says what it is: a local
+// branch such as `feature/login` contains a `/` like a remote one but lives under `refs/heads/`.
+// The name is the short one the graph shows; any other ref keeps its full name.
+function parseRef(x) {
+  if (x.startsWith("HEAD -> ")) return { name: x.slice(8).replace(HEADS, ""), kind: "head" };
+  if (x === "HEAD") return { name: "HEAD", kind: "head" };
+  if (x.startsWith("tag: ")) return { name: x.slice(5).replace(TAGS, ""), kind: "tag" };
+  if (x.startsWith(HEADS)) return { name: x.slice(HEADS.length), kind: "local" };
+  if (x.startsWith(REMOTES)) return { name: x.slice(REMOTES.length), kind: "remote" };
+  return { name: x, kind: "remote" };
+}
+
 export function parseLog(text) {
   return text
     .split("\x1e")
@@ -18,14 +34,7 @@ export function parseLog(text) {
         author,
         when,
         subject,
-        refs: refs
-          ? refs.split(", ").map((x) => {
-              if (x.startsWith("HEAD -> ")) return { name: x.slice(8), kind: "head" };
-              if (x === "HEAD") return { name: "HEAD", kind: "head" };
-              if (x.startsWith("tag: ")) return { name: x.slice(5), kind: "tag" };
-              return { name: x, kind: x.includes("/") ? "remote" : "local" };
-            })
-          : [],
+        refs: refs ? refs.split(", ").map(parseRef) : [],
       };
     });
 }

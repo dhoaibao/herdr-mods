@@ -13,7 +13,7 @@ export const CONFIG_SCOPES = [
   ["global", "Global"],
 ];
 // Best effort: git has no marker for secrets, so this masks the credential-bearing shapes git documents
-// (URL userinfo, proxy userinfo, password/token/secret-like variables, extraHeader) and nothing else.
+// (URL userinfo, proxy userinfo, keys with password/token/secret in them, extraHeader) and nothing else.
 const SECRET_NAME = /(pass|token|secret|extraheader)/i;
 const MASK = "••••••";
 
@@ -78,7 +78,7 @@ function maskAssignments(text) {
   return out + text.slice(from);
 }
 
-/** The setting name without its subsection: `remote.origin.proxy` -> `proxy`. */
+/** The setting name without its section and subsection: `remote.origin.proxy` -> `proxy`. */
 const variable = (key) => key.slice(key.lastIndexOf(".") + 1);
 
 /** A key can carry a URL too (`url.<base>.insteadOf`), so it is masked like a value. */
@@ -96,9 +96,10 @@ function maskProxy(value) {
 }
 
 export function maskValue(key, value) {
-  const name = variable(key);
-  if (SECRET_NAME.test(name)) return MASK;
-  if (name.toLowerCase() === "proxy") value = maskProxy(value);
+  // The whole key counts, not only its last part: `secrets.github` and `credential.token.helper` hold
+  // a secret as well, at the price of also masking a subsection that merely mentions one.
+  if (SECRET_NAME.test(key)) return MASK;
+  if (variable(key).toLowerCase() === "proxy") value = maskProxy(value);
   // Inline scripts (a `!` credential helper, an alias) can carry `password=…`, `GH_TOKEN=…` or `client_secret='…'`.
   return maskAssignments(maskUrls(value));
 }

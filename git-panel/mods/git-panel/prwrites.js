@@ -220,6 +220,36 @@ export function deleteHeadBranch(v, cx, after) {
         }
         if (!Array.isArray(open) || open.length)
           return `${branch} is the base of an open pull request: not deleting it`;
+        // GitHub closes every open PR whose head is the deleted branch. `--head` matches the branch name
+        // only, so a fork's PR of the same name comes back too: it does not use this repository's ref,
+        // so only a same-repository PR (anything but `isCrossRepository: true`) other than #n refuses.
+        // A failed or unparsable read, or a full page that may hide one, refuses too.
+        const HEADS = 100;
+        const heads = await gh([
+          "pr",
+          "list",
+          "--repo",
+          slug,
+          "--head",
+          branch,
+          "--state",
+          "open",
+          "--limit",
+          String(HEADS),
+          "--json",
+          "number,isCrossRepository",
+        ]);
+        if (heads.code !== 0) return `Could not check the open pull requests from ${branch}: ${tail(heads)}`;
+        let from;
+        try {
+          from = JSON.parse(heads.stdout);
+        } catch {
+          return `Could not check the open pull requests from ${branch}`;
+        }
+        if (!Array.isArray(from) || from.length >= HEADS)
+          return `Could not check the open pull requests from ${branch}`;
+        if (from.some((p) => p?.number !== n && p?.isCrossRepository !== true))
+          return `${branch} is the head of another open pull request: not deleting it`;
         const ref = await gh([
           "api",
           "--hostname",

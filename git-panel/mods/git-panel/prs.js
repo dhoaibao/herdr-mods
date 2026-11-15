@@ -258,22 +258,30 @@ export function pickPrFile(v, path, cx) {
     root = v.root,
     on = v.on;
   const same = () => v.prSel === number && v.prFile === path && v.context === context;
+  // The cache names the repository too: the same number in another repository is another PR.
+  const key = `${context}#${number}`;
   v.prFile = path;
   v.setDiff(["Loading…"]);
   cx.spawn(async (cx) => {
     let lines;
     try {
-      if (v.prDiffsFor !== number) {
+      let diffs = v.prDiffsFor === key ? v.prDiffs : null;
+      if (!diffs) {
         const r = await exec("gh", ["pr", "diff", String(number), "--color", "never"], {
           cwd: root,
           on,
           timeout: 60000,
         });
         if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split("\n").slice(-2).join("\n"));
-        v.prDiffs = splitDiff(r.stdout);
-        v.prDiffsFor = number;
+        diffs = splitDiff(r.stdout);
+        // Stored only while that PR is still the open one here: a late result must not refill a cache
+        // that clearPr or resetPrs emptied (or one now meant for another repository).
+        if (v.prSel === number && v.context === context) {
+          v.prDiffs = diffs;
+          v.prDiffsFor = key;
+        }
       }
-      lines = v.prDiffs.get(path);
+      lines = diffs.get(path);
       if (!lines?.length) lines = ["No text diff (binary file or too large)"];
     } catch (e) {
       lines = [`Cannot show this diff: ${e?.message ?? e}`];

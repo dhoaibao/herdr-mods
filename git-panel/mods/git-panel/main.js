@@ -275,6 +275,7 @@ export default class GitPanel extends View {
           "--tags",
           "HEAD",
           "--date-order",
+          "--decorate=full",
           "-n",
           String(this.limit),
           `--format=${FORMAT}`,
