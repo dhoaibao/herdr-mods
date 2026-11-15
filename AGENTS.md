@@ -18,12 +18,12 @@ Source repo for Herdr desktop-app mods, one folder per mod, laid out like a Herd
 
 ### Canonical sources and generated files
 
-- The repo copy is a snapshot. The running app loads `~/.config/herdr-app/mods/<mod>/` and hot-reloads it; Herdr writes `jsconfig.json`, `gpui-kit.d.ts` and `herdr.d.ts` there (git-ignored). Keep the two copies in sync by hand; do not edit the live copy without mirroring the change here.
+- The repo copy is a snapshot. The running app loads `~/.config/herdr-app/mods/<mod>/` and hot-reloads it; Herdr writes `jsconfig.json` and `gpui-kit.d.ts` there (git-ignored; `gpui-kit.d.ts` also declares the `herdr` module, and `herdr.d.ts` itself sits at the config-home root). Keep the two copies in sync by hand; do not edit the live copy without mirroring the change here.
 - gpui-kit and herdr APIs: `~/.config/herdr-app/{AGENTS.md,herdr.d.ts,gpui-kit.d.ts}`.
 
 ### Constraints
 
-- Mods are unsandboxed JS that run `git` and `gh`. The mod never forces a push and never creates or reviews PRs on GitHub; its only GitHub writes are the two-click merge, close, ready-for-review and delete-head-branch of ADR-009 (never `--admin`, auto-merge or `gh`'s branch-delete flag), and beyond fetch, pull, push, branch switching and `gh pr checkout` its local writes are limited to the set in ADR-007 (the PR detail's "Hide" only dismisses the local panel); keep it that way unless the user asks. Keep the Security section of `README.md` in step with every `git`/`gh` subcommand the code runs.
+- Mods are unsandboxed JS that run `git` and `gh`. The mod never forces a push and never creates or reviews PRs on GitHub; its only GitHub writes are the two-click merge, close, ready-for-review and delete-head-branch of ADR-009 (never `--admin`, auto-merge or `gh`'s branch-delete flag), and beyond fetch, pull, push, branch switching and `gh pr checkout` its local writes are limited to the set in ADR-007, with `branch -D` as ADR-010 allows (the PR detail's "Hide" only dismisses the local panel); keep it that way unless the user asks. Keep the Security section of `README.md` in step with every `git`/`gh` subcommand the code runs.
 - gpui-kit limits (no handlers in `v_virtual_list` renderers, no `occlude`, reuse of `cx`) are listed in `git-panel/RECIPE.md`.
 - Preview with `herdr-app shot <file.png>` on a temporary tab (`herdr-app do tab.new --mod <name> --props '{...}'`, then `tab.close`); do not alter the user's layout or keys.
 

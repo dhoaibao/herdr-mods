@@ -8,7 +8,7 @@ Show more of the information developers need and add safe, local write actions t
 
 ## Decisions
 
-- Writes: create-only actions plus housekeeping (branch/tag here, detached checkout, stash push/apply, delete merged branch with `-d`, rename, stash pop/drop, cherry-pick/revert, Abort).
+- Writes: create-only actions plus housekeeping (branch/tag here, detached checkout, stash push/apply, delete merged branch with `-d` (`-D` was added later: [ADR-010](../decisions/ADR-010-allow-force-deleting-local-branches.md)), rename, stash pop/drop, cherry-pick/revert, Abort).
 - No staging or commit UI; committing stays with Herdr's Changes panel.
 - Branch, tag and stash management lives in a new Refs tab (`refs.js`).
 - New modules only (`refs.js`, `status.js`; `diff.js` extracted when the stash diff needs it). `main.js` is not split up front. (Split afterwards into feature modules, and the mod renamed from `git-graph`: [ADR-008](../decisions/ADR-008-split-into-feature-modules-and-rename.md).)
@@ -75,4 +75,4 @@ Every phase: `herdr-app check git-panel/mods/git-panel` passes, `bun run check` 
 
 ## Out of scope
 
-Rebase, reset, clean, discarding changes, `branch -D`, `stash clear`, deleting remote branches, force-push, `--no-verify`, any GitHub write (ADR-001), staging/commit/amend, blame, worktree management (Herdr's `worktree` mod), pushing a single tag (W5).
+Rebase, reset, clean, discarding changes, `branch -D` (later allowed by [ADR-010](../decisions/ADR-010-allow-force-deleting-local-branches.md)), `stash clear`, deleting remote branches, force-push, `--no-verify`, any GitHub write (ADR-001; the four pull request actions were later allowed by [ADR-009](../decisions/ADR-009-allow-guarded-pull-request-writes.md)), staging/commit/amend, blame, worktree management (Herdr's `worktree` mod), pushing a single tag (W5).

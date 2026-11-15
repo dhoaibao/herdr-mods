@@ -1,6 +1,6 @@
 # ADR-007: Allow Guarded Local Writes
 
-- Status: Accepted
+- Status: Accepted; the branch delete rule is superseded in part by [ADR-010](ADR-010-allow-force-deleting-local-branches.md) (which commands delete a branch)
 - Date: 2026-11-09
 - Supersedes: none (extends [ADR-003](ADR-003-guard-push.md); the GitHub side is covered by [ADR-009](ADR-009-allow-guarded-pull-request-writes.md), which superseded ADR-001)
 
@@ -22,8 +22,8 @@ Allowed writes, all local, all through the view's `op()` (one at a time, argv ar
 | Pop a stash | `git stash pop stash@{n}` | 2 |
 | Drop a stash | `git stash drop stash@{n}` | 2 |
 | Rename a branch | `git branch -m -- <old> <new>` | 1 |
-| Delete a merged branch | `git branch -d -- <name>` | 2 |
-| Delete an unmerged branch | `git branch -D -- <name>` | 2 |
+| Delete a merged branch (not ahead of its upstream) | `git branch -d -- <name>` | 2 |
+| Delete an unmerged branch, or a merged one ahead of its upstream ([ADR-010](ADR-010-allow-force-deleting-local-branches.md)) | `git branch -D -- <name>` | 2 |
 | Cherry-pick a commit | `git cherry-pick <hash>` | 2 |
 | Revert a commit | `git revert --no-edit <hash>` | 2 |
 | Abort an operation in progress | `git merge\|rebase\|cherry-pick\|revert --abort` | 2 |
@@ -33,13 +33,13 @@ Rules:
 - **Two tiers.** An action that only creates a ref or stash entry, applies one, or renames a branch takes one click. An action that removes an entry (`pop`, `drop`, `branch -d`, `branch -D`), creates a commit (`cherry-pick`, `revert`) or discards the work on an operation (`--abort`) takes two: the first arms it for 5 s with an ansi1 button (`confirm()`, generalizing the Push guard of ADR-003 from a flag to an action key), the second runs it. The key names the whole target, so arming one target never lets a single click run on another, and closing the item or opening another branch drops the pending arm:
   - `cherry-pick` and `revert`: `<kind>:<hash>:<branch>`, the commit and the branch it lands on.
   - `pop` and `drop`: `<verb>:<stash@{n}>:<hash>`, the stash entry and its commit (two entries can hold the same commit).
-  - `branch -d` and `branch -D`: `del:<hash>:<name>` (merged) or `del:<hash>:<name>:force` (unmerged), the branch, its hash and which of the two it is.
+  - `branch -d` and `branch -D`: `del:<hash>:<name>` (`-d`) or `del:<hash>:<name>:force` (`-D`), the branch, its hash and which of the two it is (see [ADR-010](ADR-010-allow-force-deleting-local-branches.md) for when each runs).
   - `--abort`: `abort:<kind>:<id>`, the operation and its id, the text of the marker file that names it (for example the commit being merged).
   - Push: `push`.
 - **Names and hashes.** A branch or tag name must match `^[A-Za-z0-9_][A-Za-z0-9._/-]*$`, must not contain `..` or end in `/`, `.` or `.lock` (so it can never start with `-`), and must pass `git check-ref-format refs/heads/<name>` or `refs/tags/<name>` before anything is written. A commit or stash hash must match `^[0-9a-f]{40,64}$`. A message is passed as the value of `-m`, never as a separate option.
 - **Captured targets.** The hash, branch name or stash is read when the button is clicked, not later. A stash is applied by its hash. `pop` and `drop` need the entry name, so each first checks that `git rev-parse --verify stash@{n}` still equals the hash that was clicked and refuses otherwise; `branch -d` and `-D` do the same for `refs/heads/<name>`. A branch name taken from the list goes after `--`, so it can never be read as an option; a new name (rename) passes the same checks as any other.
 - **Preconditions.** Nothing here runs while a merge, rebase, cherry-pick, revert or patch is in progress, except Abort. Git's own refusals stay in force (a branch or tag that exists, local changes that would be overwritten, a branch that is not merged); the mod shows git's text. In addition:
-  - `branch -d` is used for a branch merged into HEAD, `branch -D` for any other local branch (the button reads `Delete (unmerged)`); neither is offered for the current branch. `-D` is the only way git deletes a branch whose commits are not reachable from HEAD (for example one squash-merged on GitHub), and its commits then stay reachable only through the reflog until git prunes them.
+  - `branch -d` is used for a branch merged into HEAD and not ahead of its upstream, `branch -D` for any other local branch (an unmerged one reads `Delete (unmerged)`; a merged one ahead of its upstream, which `-d` always refuses, is re-checked with `merge-base --is-ancestor` first, see [ADR-010](ADR-010-allow-force-deleting-local-branches.md)); neither is offered for the current branch. `-D` is the only way git deletes a branch whose commits are not reachable from HEAD (for example one squash-merged on GitHub), and its commits then stay reachable only through the reflog until git prunes them.
   - Cherry-pick and revert need a branch checked out (not a detached HEAD), refuse a merge commit (git needs `-m` for it), and re-check right before running that no tracked file has uncommitted changes (`status --porcelain --untracked-files=no` is empty) and that the commit fits HEAD (`merge-base --is-ancestor`: a revert needs it in HEAD's history, a cherry-pick needs it outside). A conflict leaves the operation in progress; the banner then offers Abort, and continuing or finishing is left to a terminal.
   - Abort re-reads which operation is in progress, kind and id, right before it runs and refuses if it is no longer that very one. There is no Abort for a `git am`.
 - **Undo.** Every action creates something or can be undone, with one exception: Abort discards the work done on the operation so far (git goes back to the state before it started, but may not be able to rebuild uncommitted changes that existed before it began), which is why it takes two clicks and the banner says so. The success notes of `pop`, `drop`, `branch -d` and `branch -D` stay up until clicked away or replaced by the next action's note, and carry the hash and the command that puts it back (`git stash store <hash>`, `git branch <name> <hash>`; for `-D` the hash is the only record of the unmerged commits). A cherry-pick or revert is undone with `git reset` or a revert in a terminal.

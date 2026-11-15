@@ -1,6 +1,6 @@
 # Git panel: pull request actions
 
-- Status: approved
+- Status: implemented
 
 ## Goal
 
@@ -19,7 +19,7 @@ Let the Pull requests tab merge, close, mark ready for review, and delete the he
 - AC-3: WHEN Close PR is clicked twice on an open PR THEN `gh pr close <n> --repo <host>/<owner>/<repo>` runs with no other flag and the kept note names `gh pr reopen <n> --repo <host>/<owner>/<repo>`. Evidence: user-confirmed.
 - AC-4: WHEN Delete branch is clicked twice on a merged same-repository PR whose branch still equals the head commit, is not the default branch and is not the base of an open PR THEN `gh api --hostname <host> -X DELETE repos/<o>/<r>/git/refs/heads/<b>` runs, the local branch is untouched, and the kept note says how to restore it. Evidence: user-confirmed, plus `git branch --list <b>` afterwards.
 - AC-5: WHEN the PR is from a fork, not merged, or the branch moved, is gone, is the default branch, or is the base of an open PR THEN Delete branch is hidden or refused and no DELETE runs. Evidence: user-confirmed, plus inspection.
-- AC-6: WHEN an open PR is a draft THEN Ready for review shows and two clicks run exactly `gh pr ready <n>`; WHEN it is not a draft THEN the button is absent. Evidence: user-confirmed.
+- AC-6: WHEN an open PR is a draft THEN Ready for review shows and two clicks run exactly `gh pr ready <n> --repo <host>/<owner>/<repo>`; WHEN it is not a draft THEN the button is absent. Evidence: user-confirmed.
 - AC-7: WHEN an action is armed and the user selects another PR, hides the panel, changes the state filter or the method, or 5 s pass THEN the arm is dropped, and a single click never runs a write. Evidence: user-confirmed, plus inspection of `clearPr` and the keys.
 - AC-8: WHEN `Hide` is clicked THEN the panel closes and no command runs. Evidence: inspection of `prs.js`.
 - AC-9: WHEN the source is searched for `--admin`, `--auto`, `--delete-branch`, `--undo` and `--force` THEN none appear in a command. Evidence: automated check, `rg -n -e '--admin' -e '--auto' -e '--delete-branch' -e '--undo' -e '--force' git-panel/mods/git-panel/` printing only comments.
